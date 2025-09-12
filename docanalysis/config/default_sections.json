@@ -1,0 +1,18 @@
+{
+"ABS":["*abstract.xml"],
+"ACK": ["*ack.xml"],
+"AFF": ["*aff.xml"],
+"AUT": ["*contrib-group.xml"],
+"CON": ["*conclusion*/*.xml"],
+"DIS": ["*discussion*/**/*_title.xml", "*discussion*/**/*_p.xml"], 
+"ETH": ["*ethic*/*.xml"],
+"FIG": ["*fig*.xml"],
+"INT": ["*introduction*/*.xml", "*background*/*.xml"],
+"KEY": ["*kwd-group.xml"],
+"MET": ["*method*/*.xml", "*material*/*.xml"] ,
+"RES": ["*result*/*/*_title.xml", "*result*/*/*_p.xml"], 
+"TAB": ["*table*.xml"],
+"TIL": ["*article-meta/*title-group.xml"],
+"HTML": ["*.html"]
+
+}
