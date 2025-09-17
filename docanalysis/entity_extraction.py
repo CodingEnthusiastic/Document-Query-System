@@ -217,9 +217,13 @@ class EntityExtraction:
 
         """
         pygetpapers_call = Pygetpapers()
-        pygetpapers_call.run_command(
-            query=query, limit=hits, output=output, xml=True)
-        logging.info(f"making CProject {output} with {hits} papers on {query}")
+        try:
+            pygetpapers_call.run_command(
+                query=query, limit=hits, output=output, xml=True)
+            logging.info(f"making CProject {output} with {hits} papers on {query}")
+        except Exception as e:
+            logging.error(f"Error running pygetpapers: {e}")
+            raise # Re-raise the exception to be caught by the API server
 
     def run_ami_section(self, path):
         """Creates sections folder for each paper (CTree); sections papers into front, body, back and floats based on JATS
