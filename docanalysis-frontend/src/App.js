@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Navigation from './components/Navigation';
 import Hero from './components/Hero';
 import Dashboard from './components/Dashboard';
+import CustomDictionary from './components/CustomDictionary';
+import FileUpload from './components/FileUpload';
 import Footer from './components/Footer';
 import apiService from './services/apiService';
 
@@ -26,11 +28,15 @@ function App() {
   const renderCurrentView = () => {
     switch (currentView) {
       case 'home':
-        return <Hero />;
+        return <Hero setCurrentView={setCurrentView} />;
+      case 'fileupload':
+        return <FileUpload setCurrentView={setCurrentView} />;
       case 'dashboard':
         return <Dashboard />;
+      case 'dictionary':
+        return <CustomDictionary setCurrentView={setCurrentView} />;
       default:
-        return <Hero />;
+        return <Hero setCurrentView={setCurrentView} />;
     }
   };
 

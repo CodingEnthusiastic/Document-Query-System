@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Download, Search, BarChart3, FileText, Globe, BookOpen } from 'lucide-react';
-import FileUpload from './FileUpload';
 
-const Hero = () => {
-  const [showUpload, setShowUpload] = useState(false);
+const Hero = ({ setCurrentView }) => {
 
   const handleAnalyzeClick = () => {
-    setShowUpload(true);
+    setCurrentView('fileupload');
   };
 
   const features = [
@@ -54,9 +52,7 @@ const Hero = () => {
     }
   ];
 
-  if (showUpload) {
-    return <FileUpload onBack={() => setShowUpload(false)} />;
-  }
+  
 
   return (
     <section className="relative min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 text-white overflow-hidden pt-16">

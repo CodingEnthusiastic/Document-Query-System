@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Home, BarChart3, FileText, Settings, Menu, X } from 'lucide-react';
+import { Home, BarChart3, FileText, Settings, Menu, X, BookOpen } from 'lucide-react';
 
 const Navigation = ({ currentView, setCurrentView, apiStatus }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
@@ -21,8 +21,9 @@ const Navigation = ({ currentView, setCurrentView, apiStatus }) => {
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <motion.div
-            className="flex items-center gap-2"
+          <motion.button
+            onClick={() => setCurrentView('home')}
+            className="flex items-center gap-2 cursor-pointer"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
@@ -31,7 +32,7 @@ const Navigation = ({ currentView, setCurrentView, apiStatus }) => {
               <FileText className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-white">DocAnalysis</span>
-          </motion.div>
+          </motion.button>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">

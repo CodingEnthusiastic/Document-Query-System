@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dictionary>
+    <name>Medical COVID Stroke</name>
+    <description>Dictionary for medical terms related to COVID-19, vaccination, stroke, and cardiovascular outcomes</description>
+    
+    <!-- COVID-19 and Vaccination Terms -->
+    <entity>
+        <term>COVID-19</term>
+        <category>Disease</category>
+        <description>Coronavirus disease 2019</description>
+    </entity>
+    
+    <entity>
+        <term>coronavirus disease 2019</term>
+        <category>Disease</category>
+        <description>Coronavirus disease caused by SARS-CoV-2</description>
+    </entity>
+    
+    <entity>
+        <term>vaccination</term>
+        <category>Intervention</category>
+        <description>Immunization against COVID-19</description>
+    </entity>
+    
+    <entity>
+        <term>vaccine</term>
+        <category>Intervention</category>
+        <description>COVID-19 immunization product</description>
+    </entity>
+    
+    <entity>
+        <term>Pfizer</term>
+        <category>Vaccine</category>
+        <description>Pfizer-BioNTech COVID-19 vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>BNT162b2</term>
+        <category>Vaccine</category>
+        <description>Pfizer-BioNTech mRNA vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>Moderna</term>
+        <category>Vaccine</category>
+        <description>Moderna COVID-19 vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>mRNA-1273</term>
+        <category>Vaccine</category>
+        <description>Moderna mRNA vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>AstraZeneca</term>
+        <category>Vaccine</category>
+        <description>Oxford-AstraZeneca COVID-19 vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>ChAdOx1</term>
+        <category>Vaccine</category>
+        <description>Oxford-AstraZeneca viral vector vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>Johnson &amp; Johnson</term>
+        <category>Vaccine</category>
+        <description>Johnson &amp; Johnson COVID-19 vaccine</description>
+    </entity>
+    
+    <entity>
+        <term>Ad26.COV2.S</term>
+        <category>Vaccine</category>
+        <description>Johnson &amp; Johnson viral vector vaccine</description>
+    </entity>
+    
+    <!-- Stroke and Neurological Terms -->
+    <entity>
+        <term>acute ischemic stroke</term>
+        <category>Disease</category>
+        <description>Acute cerebral infarction</description>
+    </entity>
+    
+    <entity>
+        <term>AIS</term>
+        <category>Disease</category>
+        <description>Acute ischemic stroke abbreviation</description>
+    </entity>
+    
+    <entity>
+        <term>ischemic stroke</term>
+        <category>Disease</category>
+        <description>Cerebral infarction due to reduced blood flow</description>
+    </entity>
+    
+    <entity>
+        <term>stroke</term>
+        <category>Disease</category>
+        <description>Cerebrovascular accident</description>
+    </entity>
+    
+    <entity>
+        <term>intracranial hemorrhage</term>
+        <category>Complication</category>
+        <description>Bleeding within the skull</description>
+    </entity>
+    
+    <entity>
+        <term>intracerebral hemorrhage</term>
+        <category>Complication</category>
+        <description>Bleeding within brain tissue</description>
+    </entity>
+    
+    <entity>
+        <term>subarachnoid hemorrhage</term>
+        <category>Complication</category>
+        <description>Bleeding in subarachnoid space</description>
+    </entity>
+    
+    <entity>
+        <term>cerebrovascular disorders</term>
+        <category>Disease</category>
+        <description>Disorders affecting brain blood vessels</description>
+    </entity>
+    
+    <!-- Cardiovascular and Thrombotic Events -->
+    <entity>
+        <term>acute myocardial infarction</term>
+        <category>Complication</category>
+        <description>Heart attack</description>
+    </entity>
+    
+    <entity>
+        <term>venous thromboembolism</term>
+        <category>Complication</category>
+        <description>Blood clots in venous system</description>
+    </entity>
+    
+    <entity>
+        <term>pulmonary embolism</term>
+        <category>Complication</category>
+        <description>Blood clot in pulmonary arteries</description>
+    </entity>
+    
+    <entity>
+        <term>venous embolism</term>
+        <category>Complication</category>
+        <description>Blood clot in venous system</description>
+    </entity>
+    
+    <entity>
+        <term>thrombosis</term>
+        <category>Complication</category>
+        <description>Blood clot formation</description>
+    </entity>
+    
+    <entity>
+        <term>hypercoagulability</term>
+        <category>Condition</category>
+        <description>Increased tendency for blood clotting</description>
+    </entity>
+    
+    <!-- Clinical Outcomes and Measures -->
+    <entity>
+        <term>mortality</term>
+        <category>Outcome</category>
+        <description>Death rate</description>
+    </entity>
+    
+    <entity>
+        <term>all-cause mortality</term>
+        <category>Outcome</category>
+        <description>Death from any cause</description>
+    </entity>
+    
+    <entity>
+        <term>morbidity</term>
+        <category>Outcome</category>
+        <description>Disease burden</description>
+    </entity>
+    
+    <entity>
+        <term>survival</term>
+        <category>Outcome</category>
+        <description>Continuing to live</description>
+    </entity>
+    
+    <entity>
+        <term>hazard ratio</term>
+        <category>Statistic</category>
+        <description>Statistical measure of risk</description>
+    </entity>
+    
+    <entity>
+        <term>HR</term>
+        <category>Statistic</category>
+        <description>Hazard ratio abbreviation</description>
+    </entity>
+    
+    <entity>
+        <term>confidence interval</term>
+        <category>Statistic</category>
+        <description>Range of plausible values</description>
+    </entity>
+    
+    <entity>
+        <term>CI</term>
+        <category>Statistic</category>
+        <description>Confidence interval abbreviation</description>
+    </entity>
+    
+    <entity>
+        <term>propensity score matching</term>
+        <category>Method</category>
+        <description>Statistical matching technique</description>
+    </entity>
+    
+    <entity>
+        <term>Kaplan-Meier</term>
+        <category>Method</category>
+        <description>Survival analysis method</description>
+    </entity>
+    
+    <entity>
+        <term>Cox proportional hazard</term>
+        <category>Method</category>
+        <description>Statistical regression method</description>
+    </entity>
+    
+    <!-- Patient Care and Procedures -->
+    <entity>
+        <term>mechanical ventilation</term>
+        <category>Procedure</category>
+        <description>Artificial respiratory support</description>
+    </entity>
+    
+    <entity>
+        <term>hospitalization</term>
+        <category>Healthcare</category>
+        <description>Hospital admission</description>
+    </entity>
+    
+    <entity>
+        <term>intensive care</term>
+        <category>Healthcare</category>
+        <description>Critical care unit treatment</description>
+    </entity>
+    
+    <entity>
+        <term>G-tube placement</term>
+        <category>Procedure</category>
+        <description>Gastrostomy tube insertion</description>
+    </entity>
+    
+    <entity>
+        <term>dysphagia</term>
+        <category>Symptom</category>
+        <description>Difficulty swallowing</description>
+    </entity>
+    
+    <!-- Patient Demographics and Comorbidities -->
+    <entity>
+        <term>patients</term>
+        <category>Population</category>
+        <description>Study participants</description>
+    </entity>
+    
+    <entity>
+        <term>cohort</term>
+        <category>Population</category>
+        <description>Study group</description>
+    </entity>
+    
+    <entity>
+        <term>comorbidities</term>
+        <category>Condition</category>
+        <description>Concurrent medical conditions</description>
+    </entity>
+    
+    <entity>
+        <term>hypertension</term>
+        <category>Comorbidity</category>
+        <description>High blood pressure</description>
+    </entity>
+    
+    <entity>
+        <term>diabetes mellitus</term>
+        <category>Comorbidity</category>
+        <description>Diabetes</description>
+    </entity>
+    
+    <entity>
+        <term>coronary artery disease</term>
+        <category>Comorbidity</category>
+        <description>Heart vessel disease</description>
+    </entity>
+    
+    <entity>
+        <term>heart failure</term>
+        <category>Comorbidity</category>
+        <description>Cardiac dysfunction</description>
+    </entity>
+    
+    <entity>
+        <term>atrial fibrillation</term>
+        <category>Comorbidity</category>
+        <description>Irregular heart rhythm</description>
+    </entity>
+    
+    <entity>
+        <term>chronic kidney disease</term>
+        <category>Comorbidity</category>
+        <description>Progressive kidney dysfunction</description>
+    </entity>
+    
+    <!-- Medications -->
+    <entity>
+        <term>antithrombotics</term>
+        <category>Medication</category>
+        <description>Anti-clotting medications</description>
+    </entity>
+    
+    <entity>
+        <term>aspirin</term>
+        <category>Medication</category>
+        <description>Antiplatelet medication</description>
+    </entity>
+    
+    <entity>
+        <term>clopidogrel</term>
+        <category>Medication</category>
+        <description>Antiplatelet medication</description>
+    </entity>
+    
+    <entity>
+        <term>warfarin</term>
+        <category>Medication</category>
+        <description>Anticoagulant medication</description>
+    </entity>
+    
+    <entity>
+        <term>apixaban</term>
+        <category>Medication</category>
+        <description>Direct oral anticoagulant</description>
+    </entity>
+    
+    <!-- Variants -->
+    <entity>
+        <term>Delta variant</term>
+        <category>Virus</category>
+        <description>Delta strain of SARS-CoV-2</description>
+    </entity>
+    
+    <entity>
+        <term>Omicron variant</term>
+        <category>Virus</category>
+        <description>Omicron strain of SARS-CoV-2</description>
+    </entity>
+    
+    <!-- Database and Study Design -->
+    <entity>
+        <term>TriNetX</term>
+        <category>Database</category>
+        <description>Global federated health research network</description>
+    </entity>
+    
+    <entity>
+        <term>electronic health records</term>
+        <category>Data</category>
+        <description>Digital patient records</description>
+    </entity>
+    
+    <entity>
+        <term>EHR</term>
+        <category>Data</category>
+        <description>Electronic health records abbreviation</description>
+    </entity>
+    
+    <entity>
+        <term>retrospective cohort study</term>
+        <category>Study Design</category>
+        <description>Observational study looking backward</description>
+    </entity>
+    
+</dictionary>

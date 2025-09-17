@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="medical_covid_stroke">
+
+<!-- COVID-19 and Vaccination Terms -->
+<entry term="COVID-19" />
+<entry term="coronavirus disease 2019" />
+<entry term="vaccination" />
+<entry term="vaccine" />
+<entry term="Pfizer" />
+<entry term="BNT162b2" />
+<entry term="Moderna" />
+<entry term="mRNA-1273" />
+<entry term="AstraZeneca" />
+<entry term="ChAdOx1" />
+<entry term="Johnson &amp; Johnson" />
+<entry term="Ad26.COV2.S" />
+
+<!-- Stroke and Neurological Terms -->
+<entry term="acute ischemic stroke" />
+<entry term="AIS" />
+<entry term="ischemic stroke" />
+<entry term="stroke" />
+<entry term="intracranial hemorrhage" />
+<entry term="intracerebral hemorrhage" />
+<entry term="subarachnoid hemorrhage" />
+<entry term="cerebrovascular disorders" />
+
+<!-- Cardiovascular and Thrombotic Events -->
+<entry term="acute myocardial infarction" />
+<entry term="venous thromboembolism" />
+<entry term="pulmonary embolism" />
+<entry term="venous embolism" />
+<entry term="thrombosis" />
+<entry term="hypercoagulability" />
+
+<!-- Clinical Outcomes and Measures -->
+<entry term="mortality" />
+<entry term="all-cause mortality" />
+<entry term="morbidity" />
+<entry term="survival" />
+<entry term="hazard ratio" />
+<entry term="HR" />
+<entry term="confidence interval" />
+<entry term="CI" />
+<entry term="propensity score matching" />
+<entry term="Kaplan-Meier" />
+<entry term="Cox proportional hazard" />
+
+<!-- Patient Care and Procedures -->
+<entry term="mechanical ventilation" />
+<entry term="hospitalization" />
+<entry term="intensive care" />
+<entry term="G-tube placement" />
+<entry term="dysphagia" />
+
+<!-- Patient Demographics and Comorbidities -->
+<entry term="patients" />
+<entry term="cohort" />
+<entry term="comorbidities" />
+<entry term="hypertension" />
+<entry term="diabetes mellitus" />
+<entry term="coronary artery disease" />
+<entry term="heart failure" />
+<entry term="atrial fibrillation" />
+<entry term="chronic kidney disease" />
+
+<!-- Medications -->
+<entry term="antithrombotics" />
+<entry term="aspirin" />
+<entry term="clopidogrel" />
+<entry term="warfarin" />
+<entry term="apixaban" />
+
+<!-- Variants -->
+<entry term="Delta variant" />
+<entry term="Omicron variant" />
+
+<!-- Database and Study Design -->
+<entry term="TriNetX" />
+<entry term="electronic health records" />
+<entry term="EHR" />
+<entry term="retrospective cohort study" />
+
+</dictionary>
