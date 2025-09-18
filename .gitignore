@@ -41,6 +41,8 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+pygetpapers_*
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
