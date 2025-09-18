@@ -12,6 +12,27 @@ from pathlib import Path
 import shutil
 from werkzeug.utils import secure_filename
 from docanalysis.entity_extraction import EntityExtraction
+import xml.etree.ElementTree as ET
+import re
+
+# File processing imports
+try:
+    import PyPDF2
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+
+try:
+    from docx import Document
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
+
+try:
+    from bs4 import BeautifulSoup
+    HTML_SUPPORT = True
+except ImportError:
+    HTML_SUPPORT = False
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -47,6 +68,152 @@ class AnalysisJob:
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def extract_text_from_file(file_path):
+    """Extract text content from various file formats"""
+    file_ext = Path(file_path).suffix.lower()
+    
+    try:
+        if file_ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+                
+        elif file_ext == '.xml':
+            return extract_xml_content(file_path)
+            
+        elif file_ext == '.html':
+            return extract_html_content(file_path)
+            
+        elif file_ext == '.pdf' and PDF_SUPPORT:
+            return extract_pdf_content(file_path)
+            
+        elif file_ext == '.docx' and DOCX_SUPPORT:
+            return extract_docx_content(file_path)
+            
+        else:
+            # Fallback: try to read as text
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                return content if content.strip() else "Content could not be extracted"
+                
+    except Exception as e:
+        return f"Error reading file: {str(e)}"
+
+def extract_xml_content(file_path):
+    """Extract readable content from XML files"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Try to parse as XML and extract text content
+        try:
+            root = ET.fromstring(content)
+            # Extract all text content, removing XML tags
+            text_content = ET.tostring(root, encoding='unicode', method='text')
+            # Clean up whitespace
+            text_content = re.sub(r'\s+', ' ', text_content).strip()
+            return text_content if text_content else content
+        except ET.ParseError:
+            # If XML parsing fails, return raw content
+            return content
+            
+    except Exception as e:
+        return f"Error reading XML file: {str(e)}"
+
+def extract_html_content(file_path):
+    """Extract text content from HTML files"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        if HTML_SUPPORT:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+            text = soup.get_text()
+            # Clean up whitespace
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = ' '.join(chunk for chunk in chunks if chunk)
+            return text
+        else:
+            # Fallback: simple HTML tag removal
+            clean_text = re.sub('<[^<]+?>', '', html_content)
+            return re.sub(r'\s+', ' ', clean_text).strip()
+            
+    except Exception as e:
+        return f"Error reading HTML file: {str(e)}"
+
+def extract_pdf_content(file_path):
+    """Extract text content from PDF files"""
+    if not PDF_SUPPORT:
+        return "PDF processing not available. Install PyPDF2 to enable PDF support."
+    
+    try:
+        text_content = []
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                text_content.append(page.extract_text())
+        
+        full_text = '\n'.join(text_content)
+        return full_text.strip() if full_text.strip() else "No text could be extracted from PDF"
+        
+    except Exception as e:
+        return f"Error reading PDF file: {str(e)}"
+
+def extract_docx_content(file_path):
+    """Extract text content from DOCX files"""
+    if not DOCX_SUPPORT:
+        return "DOCX processing not available. Install python-docx to enable DOCX support."
+    
+    try:
+        doc = Document(file_path)
+        paragraphs = [paragraph.text for paragraph in doc.paragraphs]
+        full_text = '\n'.join(paragraphs)
+        return full_text.strip() if full_text.strip() else "No text found in DOCX file"
+        
+    except Exception as e:
+        return f"Error reading DOCX file: {str(e)}"
+
+def find_paper_files(project_path, pmcid):
+    """Find all files associated with a paper in the project directory"""
+    paper_files = []
+    
+    # Debug logging
+    print(f"DEBUG find_paper_files: project_path={project_path}, pmcid={pmcid}")
+    
+    # Look for PMC directory structure (from pygetpapers)
+    pmc_dir = os.path.join(project_path, pmcid)
+    print(f"DEBUG: Looking for PMC directory at: {pmc_dir}")
+    print(f"DEBUG: PMC directory exists: {os.path.exists(pmc_dir)}")
+    
+    if os.path.exists(pmc_dir):
+        print(f"DEBUG: Scanning files in {pmc_dir}")
+        for file_path in Path(pmc_dir).iterdir():
+            print(f"DEBUG: Found item: {file_path.name}, is_file: {file_path.is_file()}")
+            if file_path.is_file():
+                paper_files.append({
+                    'path': str(file_path),
+                    'filename': file_path.name,
+                    'size': file_path.stat().st_size
+                })
+    
+    # Also look for files directly in project directory (from uploads)
+    project_dir = Path(project_path)
+    if project_dir.exists():
+        for file_path in project_dir.iterdir():
+            if file_path.is_file() and pmcid.lower() in file_path.name.lower():
+                paper_files.append({
+                    'path': str(file_path),
+                    'filename': file_path.name,
+                    'size': file_path.stat().st_size
+                })
+    
+    print(f"DEBUG: Found {len(paper_files)} files: {[f['filename'] for f in paper_files]}")
+    return paper_files
 
 def run_docanalysis_pipeline(job):
     """Run the docanalysis pipeline in background"""
@@ -92,9 +259,15 @@ def run_docanalysis_pipeline(job):
             for file_info in job.uploaded_files:
                 src_path = file_info['path']
                 if os.path.exists(src_path):
-                    pmc_dir = os.path.join(project_path, f"PMC_{secure_filename(file_info['original_name'])}")
+                    # Create PMC-style directory for each file
+                    file_basename = Path(file_info['original_name']).stem
+                    pmc_dir = os.path.join(project_path, f"PMC_{secure_filename(file_basename)}")
                     os.makedirs(pmc_dir, exist_ok=True)
-                    shutil.copy(src_path, os.path.join(pmc_dir, 'fulltext.xml'))
+                    
+                    # Copy file with original extension
+                    file_ext = Path(file_info['original_name']).suffix
+                    dest_filename = f"fulltext{file_ext}"
+                    shutil.copy(src_path, os.path.join(pmc_dir, dest_filename))
             args['run_pygetpapers'] = False
 
         job.progress = 20
@@ -202,19 +375,53 @@ def fetch_papers():
         return jsonify({'error': 'Query is required'}), 400
 
     project_name = f"pygetpapers_{query.replace(' ', '_')}_{int(time.time())}"
-    project_path = os.path.join(os.getcwd(), project_name)
+    
+    # Get the base directory where Flask app is running
+    base_dir = os.path.abspath(os.path.dirname(__file__))  # Directory containing the Flask script
+    project_path = os.path.join(base_dir, project_name)
+    
+    print(f"DEBUG fetch_papers: base_dir={base_dir}")
+    print(f"DEBUG fetch_papers: project_name={project_name}")
+    print(f"DEBUG fetch_papers: project_path={project_path}")
 
     try:
         entity_extraction = EntityExtraction()
         entity_extraction.run_pygetpapers(query, hits, project_path)
         
         papers = []
-        for item in Path(project_path).iterdir():
-            if item.is_dir() and item.name.startswith('PMC'):
-                papers.append({'title': item.name, 'pmcid': item.name})
-        return jsonify({'project_name': project_name, 'papers': papers})
+        if os.path.exists(project_path):
+            for item in Path(project_path).iterdir():
+                if item.is_dir() and item.name.startswith('PMC'):
+                    # Get paper title from XML if available
+                    title = get_paper_title(item)
+                    papers.append({
+                        'title': title or item.name,
+                        'pmcid': item.name,
+                        'hasContent': len(list(item.iterdir())) > 0
+                    })
+                    
+        return jsonify({
+            'project_name': project_name,
+            'papers': papers
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+def get_paper_title(paper_dir):
+    """Extract title from paper XML if available"""
+    try:
+        for file_path in paper_dir.iterdir():
+            if file_path.suffix.lower() == '.xml':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                # Simple title extraction - you might want to make this more sophisticated
+                title_match = re.search(r'<article-title[^>]*>(.*?)</article-title>', content, re.IGNORECASE | re.DOTALL)
+                if title_match:
+                    title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                    return title[:100] + ('...' if len(title) > 100 else '')
+        return None
+    except:
+        return None
 
 @app.route('/api/papers/<pmcid>', methods=['GET'])
 def get_paper_content(pmcid):
@@ -222,16 +429,80 @@ def get_paper_content(pmcid):
     if not project_name:
         return jsonify({'error': 'project_name parameter is required'}), 400
 
-    paper_path = os.path.join(os.getcwd(), project_name, pmcid, 'fulltext.xml')
-    if not os.path.exists(paper_path):
-        return jsonify({'error': 'Paper not found'}), 404
+    # Get the base directory where Flask app is running (same as __file__ location)
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    project_path = os.path.join(base_dir, project_name)
+    
+    print(f"DEBUG get_paper_content: pmcid={pmcid}, project_name={project_name}")
+    print(f"DEBUG get_paper_content: base_dir={base_dir}")
+    print(f"DEBUG get_paper_content: project_path={project_path}")
+    print(f"DEBUG get_paper_content: project exists={os.path.exists(project_path)}")
+    
+    if not os.path.exists(project_path):
+        return jsonify({'error': f'Project not found at: {project_path}'}), 404
+
+    # Debug: List all directories in project to debug
+    if os.path.exists(project_path):
+        all_items = list(Path(project_path).iterdir())
+        print(f"DEBUG: Items in project directory: {[item.name for item in all_items]}")
+        all_dirs = [item.name for item in all_items if item.is_dir()]
+        print(f"DEBUG: Available directories: {all_dirs}")
+    
+    # Find files associated with this paper
+    paper_files = find_paper_files(project_path, pmcid)
+    
+    if not paper_files:
+        # Return debug information when files not found
+        debug_info = {
+            'project_path': project_path,
+            'pmcid_searched': pmcid,
+            'base_directory': base_dir,
+            'directories_found': []
+        }
+        
+        if os.path.exists(project_path):
+            for item in Path(project_path).iterdir():
+                if item.is_dir():
+                    files_in_dir = [f.name for f in item.iterdir() if f.is_file()]
+                    debug_info['directories_found'].append({
+                        'name': item.name,
+                        'files': files_in_dir
+                    })
+        
+        return jsonify({
+            'error': 'Paper files not found',
+            'debug': debug_info
+        }), 404
+
+    # Try to find the best file to display (prefer XML, then others)
+    content_file = None
+    for file_info in paper_files:
+        if file_info['filename'].lower().endswith('.xml'):
+            content_file = file_info
+            break
+    
+    if not content_file:
+        # Use the first available file
+        content_file = paper_files[0]
+
+    print(f"DEBUG: Selected file: {content_file}")
 
     try:
-        with open(paper_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        return jsonify({'title': pmcid, 'content': content})
+        content = extract_text_from_file(content_file['path'])
+        
+        # Get paper title
+        title = get_paper_title(Path(content_file['path']).parent) if content_file['filename'].endswith('.xml') else pmcid
+        
+        return jsonify({
+            'title': title or pmcid,
+            'content': content,
+            'filename': content_file['filename'],
+            'available_files': [{'filename': f['filename'], 'size': f['size']} for f in paper_files]
+        })
+        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"DEBUG: Error reading file: {str(e)}")
+        return jsonify({'error': f'Error reading paper content: {str(e)}'}), 500
 
 @app.route('/api/analyze-papers', methods=['POST'])
 def analyze_papers_route():
