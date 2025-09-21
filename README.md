@@ -1,6 +1,5 @@
-For updated tutorial, please check the [Wiki](https://github.com/petermr/docanalysis/wiki/docanalysis-Tutorial) page.
 ## docanalysis 
-`docanalysis` is a Command Line Tool that ingests corpora [(CProjects)](https://github.com/petermr/tigr2ess/blob/master/getpapers/TUTORIAL.md#cproject-and-ctrees) and carries out text-analysis of documents, including
+`docanalysis` is a Command Line Tool that ingests corpora and carries out text-analysis of documents, including
 - sectioning
 - NLP/text-mining
 - dictionary generation 
@@ -407,11 +406,5 @@ If you'd like to create a custom dictionary, you can find the steps, [here](http
      - Here's the list of NER labels [SpaCy's English model](https://spacy.io/models/en) provides:  
      `CARDINAL, DATE, EVENT, FAC, GPE, LANGUAGE, LAW, LOC, MONEY, NORP, ORDINAL, ORG, PERCENT, PERSON, PRODUCT, QUANTITY, TIME, WORK_OF_ART`
 
-
-### Credits: 
--  [Ayush Garg](https://github.com/ayush4921)
--  [Shweata N. Hegde](https://github.com/ShweataNHegde/)
--  [Daniel Mietchen](https://github.com/Daniel-Mietchen)
--  [Peter Murray-Rust](https://github.com/petermr)
 
 
