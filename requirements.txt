@@ -10,6 +10,7 @@ pygetpapers
 pytest>=6.2.5
 setuptools>=60.3.1
 spacy>=3.0.7
+scikit-learn>=1.0.0
 tkinterweb>=3.10.7
 tqdm>=4.62.3
 yake>=0.4.8

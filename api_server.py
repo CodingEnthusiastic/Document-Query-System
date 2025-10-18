@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import os
 import uuid
@@ -12,8 +12,11 @@ from pathlib import Path
 import shutil
 from werkzeug.utils import secure_filename
 from docanalysis.entity_extraction import EntityExtraction
+from docanalysis.thematic_clustering import ThematicClustering
 import xml.etree.ElementTree as ET
 import re
+import io
+import json
 
 # File processing imports
 try:
@@ -34,6 +37,19 @@ try:
 except ImportError:
     HTML_SUPPORT = False
 
+# Paper viewing imports
+try:
+    from lxml import etree
+    LXML_SUPPORT = True
+except ImportError:
+    LXML_SUPPORT = False
+
+try:
+    import pdfkit
+    PDFKIT_SUPPORT = True
+except ImportError:
+    PDFKIT_SUPPORT = False
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
@@ -41,6 +57,7 @@ CORS(app)  # Enable CORS for React frontend
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'xml', 'html', 'txt', 'docx'}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+XSLT_PATH = "jats_to_html.xsl"  # Path to JATS transformation stylesheet
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
@@ -177,6 +194,34 @@ def extract_docx_content(file_path):
         
     except Exception as e:
         return f"Error reading DOCX file: {str(e)}"
+
+def jats_xml_to_html(xml_path):
+    """Convert JATS XML to HTML using XSLT transformation"""
+    if not LXML_SUPPORT:
+        raise Exception("lxml library not available. Install lxml to enable JATS conversion.")
+    
+    if not os.path.exists(XSLT_PATH):
+        raise Exception(f"XSLT stylesheet not found at {XSLT_PATH}")
+    
+    try:
+        dom = etree.parse(xml_path)
+        xslt = etree.parse(XSLT_PATH)
+        html_str = str(etree.XSLT(xslt)(dom))
+        return html_str
+    except Exception as e:
+        raise Exception(f"Error converting JATS XML to HTML: {str(e)}")
+
+def jats_xml_to_pdf(xml_path):
+    """Convert JATS XML to PDF via HTML"""
+    if not PDFKIT_SUPPORT:
+        raise Exception("pdfkit library not available. Install pdfkit and wkhtmltopdf to enable PDF generation.")
+    
+    try:
+        html_str = jats_xml_to_html(xml_path)
+        pdf_bytes = pdfkit.from_string(html_str, False)
+        return pdf_bytes
+    except Exception as e:
+        raise Exception(f"Error converting to PDF: {str(e)}")
 
 def find_paper_files(project_path, pmcid):
     """Find all files associated with a paper in the project directory"""
@@ -318,6 +363,50 @@ def run_docanalysis_pipeline(job):
         job.error = str(e)
         job.end_time = datetime.now()
 
+def run_thematic_clustering_pipeline(job):
+    """Run the thematic clustering pipeline in background"""
+    try:
+        job.status = 'running'
+        job.progress = 10
+        job.current_step = 'Initializing clustering...'
+
+        project_path = job.params.get('project_name')
+        n_clusters = job.params.get('n_clusters', 5)
+
+        if not project_path or not os.path.exists(project_path):
+            raise Exception(f"Project path not found: {project_path}")
+
+        job.progress = 20
+        job.current_step = 'Clustering documents...'
+
+        clustering = ThematicClustering(n_clusters=n_clusters)
+        results = clustering.cluster_documents(project_path)
+
+        if "error" in results:
+            raise Exception(results["error"])
+
+        # Save results to a file
+        results_path = os.path.join(project_path, 'thematic_clustering_results.json')
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        job.progress = 100
+        job.current_step = 'Clustering complete'
+        job.status = 'completed'
+        job.end_time = datetime.now()
+        job.result = {
+            'message': 'Thematic clustering completed successfully.',
+            'output_files': {
+                'thematic_clustering_results.json': results_path
+            },
+            'data': results
+        }
+
+    except Exception as e:
+        job.status = 'failed'
+        job.error = str(e)
+        job.end_time = datetime.now()
+
 def parse_analysis_results(project_path, params):
     try:
         results_file = os.path.join(project_path, "results.csv")
@@ -341,6 +430,19 @@ def parse_analysis_results(project_path, params):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy', 'message': 'DocAnalysis API is running'})
+
+@app.route('/api/capabilities', methods=['GET'])
+def get_capabilities():
+    """Return information about available features"""
+    return jsonify({
+        'pdf_support': PDF_SUPPORT,
+        'docx_support': DOCX_SUPPORT,
+        'html_support': HTML_SUPPORT,
+        'lxml_support': LXML_SUPPORT,
+        'pdfkit_support': PDFKIT_SUPPORT,
+        'jats_conversion_available': LXML_SUPPORT and os.path.exists(XSLT_PATH),
+        'pdf_generation_available': PDFKIT_SUPPORT
+    })
 
 @app.route('/api/dictionaries', methods=['GET'])
 def get_dictionaries():
@@ -429,80 +531,115 @@ def get_paper_content(pmcid):
     if not project_name:
         return jsonify({'error': 'project_name parameter is required'}), 400
 
-    # Get the base directory where Flask app is running (same as __file__ location)
     base_dir = os.path.abspath(os.path.dirname(__file__))
     project_path = os.path.join(base_dir, project_name)
-    
-    print(f"DEBUG get_paper_content: pmcid={pmcid}, project_name={project_name}")
-    print(f"DEBUG get_paper_content: base_dir={base_dir}")
-    print(f"DEBUG get_paper_content: project_path={project_path}")
-    print(f"DEBUG get_paper_content: project exists={os.path.exists(project_path)}")
     
     if not os.path.exists(project_path):
         return jsonify({'error': f'Project not found at: {project_path}'}), 404
 
-    # Debug: List all directories in project to debug
-    if os.path.exists(project_path):
-        all_items = list(Path(project_path).iterdir())
-        print(f"DEBUG: Items in project directory: {[item.name for item in all_items]}")
-        all_dirs = [item.name for item in all_items if item.is_dir()]
-        print(f"DEBUG: Available directories: {all_dirs}")
-    
-    # Find files associated with this paper
     paper_files = find_paper_files(project_path, pmcid)
     
     if not paper_files:
-        # Return debug information when files not found
-        debug_info = {
-            'project_path': project_path,
-            'pmcid_searched': pmcid,
-            'base_directory': base_dir,
-            'directories_found': []
-        }
-        
-        if os.path.exists(project_path):
-            for item in Path(project_path).iterdir():
-                if item.is_dir():
-                    files_in_dir = [f.name for f in item.iterdir() if f.is_file()]
-                    debug_info['directories_found'].append({
-                        'name': item.name,
-                        'files': files_in_dir
-                    })
-        
-        return jsonify({
-            'error': 'Paper files not found',
-            'debug': debug_info
-        }), 404
+        return jsonify({'error': 'Paper files not found'}), 404
 
-    # Try to find the best file to display (prefer XML, then others)
-    content_file = None
+    # Get paper title from the first XML file found
+    title = pmcid
     for file_info in paper_files:
         if file_info['filename'].lower().endswith('.xml'):
-            content_file = file_info
+            title = get_paper_title(Path(file_info['path']).parent) or pmcid
+            break
+
+    file_urls = []
+    for f in paper_files:
+        # Create a path relative to the project directory for the URL
+        relative_path = os.path.relpath(f['path'], project_path)
+        # The relative path on Windows might use backslashes, replace with forward slashes for URL
+        url_path = relative_path.replace('\\', '/')
+        file_urls.append({
+            'filename': f['filename'],
+            'size': f['size'],
+            'url': f'/projects/{project_name}/{url_path}'
+        })
+
+    return jsonify({
+        'title': title,
+        'available_files': file_urls
+    })
+
+@app.route('/api/papers/<pmcid>/html', methods=['GET'])
+def get_paper_html(pmcid):
+    """Convert JATS XML paper to formatted HTML"""
+    project_name = request.args.get('project_name')
+    if not project_name:
+        return jsonify({'error': 'project_name parameter is required'}), 400
+
+    if not LXML_SUPPORT:
+        return jsonify({'error': 'JATS conversion not available. Install lxml.'}), 503
+
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    project_path = os.path.join(base_dir, project_name)
+    
+    if not os.path.exists(project_path):
+        return jsonify({'error': 'Project not found'}), 404
+
+    paper_files = find_paper_files(project_path, pmcid)
+    xml_file = None
+    
+    for file_info in paper_files:
+        if file_info['filename'].lower().endswith('.xml'):
+            xml_file = file_info['path']
             break
     
-    if not content_file:
-        # Use the first available file
-        content_file = paper_files[0]
-
-    print(f"DEBUG: Selected file: {content_file}")
+    if not xml_file:
+        return jsonify({'error': 'No XML file found for this paper'}), 404
 
     try:
-        content = extract_text_from_file(content_file['path'])
-        
-        # Get paper title
-        title = get_paper_title(Path(content_file['path']).parent) if content_file['filename'].endswith('.xml') else pmcid
-        
-        return jsonify({
-            'title': title or pmcid,
-            'content': content,
-            'filename': content_file['filename'],
-            'available_files': [{'filename': f['filename'], 'size': f['size']} for f in paper_files]
-        })
-        
+        html_content = jats_xml_to_html(xml_file)
+        return send_file(
+            io.BytesIO(html_content.encode('utf-8')),
+            mimetype='text/html',
+            as_attachment=False
+        )
     except Exception as e:
-        print(f"DEBUG: Error reading file: {str(e)}")
-        return jsonify({'error': f'Error reading paper content: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/papers/<pmcid>/pdf', methods=['GET'])
+def get_paper_pdf(pmcid):
+    """Convert JATS XML paper to PDF"""
+    project_name = request.args.get('project_name')
+    if not project_name:
+        return jsonify({'error': 'project_name parameter is required'}), 400
+
+    if not PDFKIT_SUPPORT:
+        return jsonify({'error': 'PDF generation not available. Install pdfkit and wkhtmltopdf.'}), 503
+
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    project_path = os.path.join(base_dir, project_name)
+    
+    if not os.path.exists(project_path):
+        return jsonify({'error': 'Project not found'}), 404
+
+    paper_files = find_paper_files(project_path, pmcid)
+    xml_file = None
+    
+    for file_info in paper_files:
+        if file_info['filename'].lower().endswith('.xml'):
+            xml_file = file_info['path']
+            break
+    
+    if not xml_file:
+        return jsonify({'error': 'No XML file found for this paper'}), 404
+
+    try:
+        pdf_bytes = jats_xml_to_pdf(xml_file)
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f"{pmcid}.pdf"
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/analyze-papers', methods=['POST'])
 def analyze_papers_route():
@@ -513,6 +650,20 @@ def analyze_papers_route():
     analysis_jobs[job_id] = job
     
     thread = threading.Thread(target=run_docanalysis_pipeline, args=(job,))
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'job_id': job_id, 'status': 'started'})
+
+@app.route('/api/analyze/thematic-clustering', methods=['POST'])
+def analyze_thematic_clustering_route():
+    data = request.get_json()
+    job_id = str(uuid.uuid4())
+    job = AnalysisJob(job_id, data, job_type='thematic_clustering')
+    job.project_path = data.get('project_name')
+    analysis_jobs[job_id] = job
+    
+    thread = threading.Thread(target=run_thematic_clustering_pipeline, args=(job,))
     thread.daemon = True
     thread.start()
     
@@ -585,6 +736,56 @@ def upload_files():
             })
             
     return jsonify({'uploaded_files': uploaded_files_info})
+
+@app.route('/api/projects/papers', methods=['GET'])
+def get_existing_papers():
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    projects = []
+    for item in os.listdir(base_dir):
+        if os.path.isdir(os.path.join(base_dir, item)) and (item.startswith('pygetpapers_') or item.startswith('analysis_')):
+            project_path = os.path.join(base_dir, item)
+            papers = []
+            for paper_dir_name in os.listdir(project_path):
+                paper_dir_path = os.path.join(project_path, paper_dir_name)
+                if os.path.isdir(paper_dir_path) and paper_dir_name.startswith('PMC'):
+                    title = get_paper_title(Path(paper_dir_path)) or paper_dir_name
+                    papers.append({
+                        'title': title,
+                        'pmcid': paper_dir_name,
+                    })
+            if papers:
+                projects.append({
+                    'project_name': item,
+                    'papers': papers
+                })
+    return jsonify(projects)
+
+@app.route('/styles/jats_to_html.xsl')
+def serve_xslt():
+    return send_file('jats_to_html.xsl', mimetype='application/xml')
+
+@app.route('/projects/<project_name>/<path:filepath>')
+def serve_project_file(project_name, filepath):
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    project_path = os.path.join(base_dir, project_name)
+    
+    safe_path = os.path.abspath(os.path.join(project_path, filepath))
+    if not safe_path.startswith(os.path.abspath(project_path)):
+        return "Forbidden", 403
+
+    if not os.path.exists(safe_path):
+        return "File not found", 404
+        
+    if filepath.lower().endswith('.xml'):
+        with open(safe_path, 'r', encoding='utf-8') as f:
+            xml_content = f.read()
+        
+        stylesheet_instruction = '<?xml-stylesheet type="text/xsl" href="/styles/jats_to_html.xsl"?>\n'
+        modified_xml = stylesheet_instruction + xml_content
+        
+        return Response(modified_xml, mimetype='application/xml')
+
+    return send_file(safe_path)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // ⚠️ Change this if accessing backend from another device
-const API_BASE_URL = 'http://192.168.1.10:5000/api'; 
+const API_BASE_URL = 'http://localhost:5000/api'; 
 
 // Axios instance
 const api = axios.create({
@@ -101,9 +101,16 @@ const apiService = {
     return await api.get('/entities');
   },
 
-  // ✅ Get paper content (requires project_name)
   async getPaperContent(pmcid, project_name) {
     return await api.get(`/papers/${pmcid}?project_name=${encodeURIComponent(project_name)}`);
+  },
+
+  async getExistingPapers() {
+    return await api.get('/projects/papers');
+  },
+
+  async startThematicClustering(config) {
+    return await api.post('/analyze/thematic-clustering', config);
   },
 };
 

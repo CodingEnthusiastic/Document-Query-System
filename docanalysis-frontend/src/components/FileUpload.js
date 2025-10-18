@@ -38,6 +38,11 @@ const FileUpload = ({ setCurrentView }) => {
   const [availableSections, setAvailableSections] = useState([]);
   const [viewingPaper, setViewingPaper] = useState(null);
   const [paperContent, setPaperContent] = useState({});
+  const [existingProjects, setExistingProjects] = useState([]);
+  const [nClusters, setNClusters] = useState(5);
+  const [clusteringResults, setClusteringResults] = useState(null);
+  const [isClustering, setIsClustering] = useState(false);
+  const [selectedProjectForClustering, setSelectedProjectForClustering] = useState('');
 
   // Load available options on component mount
   React.useEffect(() => {
@@ -54,6 +59,7 @@ const FileUpload = ({ setCurrentView }) => {
       }
     };
     loadOptions();
+    loadExistingPapers();
   }, []);
 
   const onDrop = useCallback(async (acceptedFiles) => {
@@ -295,20 +301,73 @@ const FileUpload = ({ setCurrentView }) => {
     `);
   };
 
-  // View Paper
-  const viewPaper = async (pmcid) => {
+  const viewPaper = async (pmcid, projName) => {
     setViewingPaper(pmcid);
+    setPaperContent(null); // Reset content while loading
+    setError(null);
+
     try {
-      if (!projectName) {
-        throw new Error("Project name is missing. Fetch papers first.");
+      const currentProjectName = projName || projectName;
+      if (!currentProjectName) {
+        throw new Error("Project name is missing.");
       }
-      const content = await apiService.getPaperContent(pmcid, projectName);
-      setPaperContent(content);
+      const paperData = await apiService.getPaperContent(pmcid, currentProjectName);
+      setPaperContent(paperData);
     } catch (err) {
       setError('Failed to load paper content: ' + err.message);
     }
   };
 
+  const loadExistingPapers = async () => {
+    try {
+      const projects = await apiService.getExistingPapers();
+      setExistingProjects(projects);
+    } catch (err) {
+      setError('Failed to load existing papers: ' + err.message);
+    }
+  };
+
+  const startClustering = async () => {
+    if (!selectedProjectForClustering) {
+      setError('Please select a project to cluster');
+      return;
+    }
+
+    setIsClustering(true);
+    setClusteringResults(null);
+    setError(null);
+
+    try {
+      const response = await apiService.startThematicClustering({
+        project_name: selectedProjectForClustering,
+        n_clusters: nClusters,
+      });
+      pollClusteringStatus(response.job_id);
+    } catch (err) {
+      setError('Failed to start clustering: ' + err.message);
+      setIsClustering(false);
+    }
+  };
+
+  const pollClusteringStatus = async (jobId) => {
+    try {
+      const status = await apiService.getJobStatus(jobId);
+      
+      if (status.status === 'completed') {
+        setClusteringResults(status.result.data);
+        setIsClustering(false);
+      } else if (status.status === 'failed') {
+        setError('Clustering failed: ' + (status.error || 'Unknown error'));
+        setIsClustering(false);
+      } else {
+        // Continue polling
+        setTimeout(() => pollClusteringStatus(jobId), 2000);
+      }
+    } catch (err) {
+      setError('Failed to check job status: ' + err.message);
+      setIsClustering(false);
+    }
+  };
 
 
   return (
@@ -332,7 +391,7 @@ const FileUpload = ({ setCurrentView }) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">{paperContent.title}</h3>
+                  <h3 className="text-xl font-semibold">{paperContent ? paperContent.title : 'Loading...'}</h3>
                   <button
                     onClick={() => setViewingPaper(null)}
                     className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -341,8 +400,24 @@ const FileUpload = ({ setCurrentView }) => {
                   </button>
                 </div>
                 <div className="prose prose-invert max-w-none">
-                  {paperContent.content ? (
-                    <p>{paperContent.content}</p>
+                  {paperContent && paperContent.available_files ? (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-2">Available Files:</h4>
+                      <ul className="space-y-2">
+                        {paperContent.available_files.map((file, index) => (
+                          <li key={index}>
+                            <a
+                              href={`http://localhost:5000${file.url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:underline"
+                            >
+                              {file.filename} ({(file.size / 1024).toFixed(1)} KB)
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : (
                     <div className="flex justify-center items-center h-48">
                       <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div>
@@ -556,7 +631,7 @@ const FileUpload = ({ setCurrentView }) => {
                       >
                         <FileText className="w-4 h-4 text-blue-300" />
                         <div className="flex-1 min-w-0">
-                          <button onClick={() => viewPaper(paper.pmcid)} className="text-sm font-medium truncate text-left hover:text-blue-400 transition-colors">
+                          <button onClick={() => viewPaper(paper.pmcid, projectName)} className="text-sm font-medium truncate text-left hover:text-blue-400 transition-colors">
                             {paper.title}
                           </button>
                           <p className="text-xs text-blue-200">{paper.pmcid}</p>
@@ -571,6 +646,42 @@ const FileUpload = ({ setCurrentView }) => {
                     ))}
                   </div>
                 </div>
+              )}
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+              <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+                <FileText className="w-6 h-6" />
+                Existing Papers
+              </h2>
+              {existingProjects.length > 0 ? (
+                <div className="mt-6">
+                  {existingProjects.map((project) => (
+                    <div key={project.project_name} className="mb-4">
+                      <h3 className="font-semibold mb-3">{project.project_name}</h3>
+                      <div className="space-y-2 max-h-60 overflow-y-auto p-2 bg-white/5 rounded-lg">
+                        {project.papers.map((paper, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-3 p-3 bg-white/10 rounded-lg border border-transparent hover:border-blue-400 transition-colors"
+                          >
+                            <FileText className="w-4 h-4 text-blue-300" />
+                            <div className="flex-1 min-w-0">
+                              <button onClick={() => viewPaper(paper.pmcid, project.project_name)} className="text-sm font-medium truncate text-left hover:text-blue-400 transition-colors">
+                                {paper.title}
+                              </button>
+                              <p className="text-xs text-blue-200">{paper.pmcid}</p>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-blue-200 text-sm">No existing papers found.</p>
               )}
             </div>
           </div>
@@ -678,8 +789,93 @@ const FileUpload = ({ setCurrentView }) => {
                 )}
               </button>
             </div>
+
+            {/* Thematic Clustering Section */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+              <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+                <Settings className="w-6 h-6" />
+                Thematic Clustering
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Select Project</label>
+                  <select
+                    value={selectedProjectForClustering}
+                    onChange={(e) => setSelectedProjectForClustering(e.target.value)}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400 transition-colors"
+                  >
+                    <option value="" disabled>Select a project</option>
+                    {projectName && <option value={projectName}>{projectName}</option>}
+                    {existingProjects.map((proj) => (
+                      <option key={proj.project_name} value={proj.project_name}>
+                        {proj.project_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Number of Clusters</label>
+                  <input
+                    type="number"
+                    value={nClusters}
+                    onChange={(e) => setNClusters(parseInt(e.target.value, 10))}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-blue-400 transition-colors"
+                    placeholder="e.g., 5"
+                  />
+                </div>
+                <button
+                  onClick={startClustering}
+                  disabled={isClustering || !selectedProjectForClustering}
+                  className="w-full py-3 px-6 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl font-semibold flex items-center justify-center gap-2 hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {isClustering ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Clustering...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5" />
+                      Start Thematic Clustering
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Clustering Results */}
+        {clusteringResults && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 lg:col-span-2 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20"
+          >
+            <h2 className="text-2xl font-semibold mb-4">Thematic Clustering Results</h2>
+            <div className="space-y-6">
+              {clusteringResults.clusters.map((cluster) => (
+                <div key={cluster.cluster_id}>
+                  <h3 className="text-lg font-semibold mb-2">Cluster {cluster.cluster_id + 1}</h3>
+                  <p className="text-sm text-blue-200 mb-2">
+                    <strong>Top Terms:</strong> {cluster.top_terms.join(', ')}
+                  </p>
+                  <ul className="space-y-2">
+                    {cluster.documents.map((doc) => (
+                      <li key={doc.pmcid} className="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <FileText className="w-4 h-4 text-blue-300" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.title}</p>
+                          <p className="text-xs text-blue-200">{doc.pmcid}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );
