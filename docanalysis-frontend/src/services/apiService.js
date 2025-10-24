@@ -112,6 +112,20 @@ const apiService = {
   async startThematicClustering(config) {
     return await api.post('/analyze/thematic-clustering', config);
   },
+
+  async extractRelations(text) {
+    return await api.post('/extract-relations', { text });
+  },
+
+  // ✅ Get list of documents
+  async getDocuments() {
+    return await api.get('/documents');
+  },
+
+  // ✅ Get text content from a document
+  async getDocumentText(documentId) {
+    return await api.get(`/documents/${encodeURIComponent(documentId)}/text`);
+  },
 };
 
 export default apiService;

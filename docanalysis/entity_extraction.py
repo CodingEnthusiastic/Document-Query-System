@@ -830,6 +830,65 @@ class EntityExtraction:
                 hit_list.append(hit["id"])
         return hit_list
 
+    def extract_patterns_and_relations(self, text):
+        """
+        Extracts rule-based patterns and SVO relations from text.
+        :param text: The text to analyze.
+        :return: A dictionary with extracted patterns and relations.
+        """
+        if not self.nlp:
+            self.download_spacy("en_core_web_sm")
+
+        doc = self.nlp(text)
+        
+        # Rule-Based Matching with Matcher
+        matcher = spacy.matcher.Matcher(self.nlp.vocab)
+        # Pattern to find mentions of ethics committees
+        pattern = [
+            {"LOWER": "ethics"},
+            {"LOWER": "committee"}
+        ]
+        matcher.add("ETHICS_COMMITTEE", [pattern])
+        
+        matches = matcher(doc)
+        found_patterns = []
+        for match_id, start, end in matches:
+            string_id = self.nlp.vocab.strings[match_id]
+            span = doc[start:end]
+            # Get the sentence containing the match
+            sent = span.sent
+            found_patterns.append({
+                "pattern_name": string_id,
+                "text": span.text,
+                "sentence": sent.text
+            })
+
+        # Relation Extraction (Subject-Verb-Object)
+        relations = []
+        for sent in doc.sents:
+            # Using textacy's SVO extraction logic as a reference
+            # https://github.com/chartbeat-labs/textacy/blob/main/src/textacy/extract/triples.py
+            verbs = [tok for tok in sent if tok.pos_ == "VERB"]
+            for verb in verbs:
+                subjects = [tok for tok in verb.lefts if tok.dep_ in ("nsubj", "nsubjpass")]
+                objects = [tok for tok in verb.rights if tok.dep_ in ("dobj", "attr", "pobj", "oprd")]
+                if subjects and objects:
+                    for subj in subjects:
+                        for obj in objects:
+                            # Simple approach: get the full subtree for subj/obj
+                            subj_span = " ".join(str(t.text) for t in subj.subtree)
+                            obj_span = " ".join(str(t.text) for t in obj.subtree)
+                            relations.append({
+                                "subject": subj_span,
+                                "relation": verb.lemma_,
+                                "object": obj_span
+                            })
+
+        return {
+            "patterns": found_patterns,
+            "relations": relations
+        }
+
 
 # take out the constants
 # look through download_tools (pygetpapers) and see if we have overlapping functionality.

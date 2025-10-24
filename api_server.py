@@ -669,6 +669,154 @@ def analyze_thematic_clustering_route():
     
     return jsonify({'job_id': job_id, 'status': 'started'})
 
+@app.route('/api/documents', methods=['GET'])
+def get_documents():
+    """
+    List all documents from uploads folder and pygetpapers projects.
+    Returns list of documents with metadata (filename, size, type, modified time, title, project).
+    """
+    try:
+        documents = []
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        
+        # Add documents from uploads folder
+        upload_folder = app.config['UPLOAD_FOLDER']
+        if os.path.exists(upload_folder):
+            for filename in os.listdir(upload_folder):
+                filepath = os.path.join(upload_folder, filename)
+                if os.path.isfile(filepath):
+                    stat_info = os.stat(filepath)
+                    file_ext = Path(filename).suffix.lower()
+                    documents.append({
+                        'id': f'upload_{filename}',
+                        'filename': filename,
+                        'title': filename,
+                        'size': stat_info.st_size,
+                        'type': file_ext.replace('.', ''),
+                        'modified': datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
+                        'source': 'uploads',
+                        'filepath': filepath
+                    })
+        
+        # Add papers from pygetpapers projects
+        for item in os.listdir(base_dir):
+            if item.startswith('pygetpapers_') and os.path.isdir(os.path.join(base_dir, item)):
+                project_path = os.path.join(base_dir, item)
+                project_name = item
+                
+                # Scan each PMC folder in the project
+                for pmc_dir in os.listdir(project_path):
+                    pmc_path = os.path.join(project_path, pmc_dir)
+                    if os.path.isdir(pmc_path) and pmc_dir.startswith('PMC'):
+                        # Look for fulltext.xml
+                        xml_file = os.path.join(pmc_path, 'fulltext.xml')
+                        if os.path.exists(xml_file):
+                            stat_info = os.stat(xml_file)
+                            # Get paper title
+                            title = get_paper_title(Path(pmc_path)) or pmc_dir
+                            documents.append({
+                                'id': f'{project_name}_{pmc_dir}',
+                                'filename': f'{pmc_dir}/fulltext.xml',
+                                'title': title,
+                                'pmcid': pmc_dir,
+                                'size': stat_info.st_size,
+                                'type': 'xml',
+                                'modified': datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
+                                'source': 'pygetpapers',
+                                'project': project_name,
+                                'filepath': xml_file
+                            })
+        
+        # Sort by modified time, newest first
+        documents.sort(key=lambda x: x['modified'], reverse=True)
+        return jsonify({'documents': documents})
+    except Exception as e:
+        app.logger.error(f"Error listing documents: {e}")
+        return jsonify({'error': 'Failed to list documents'}), 500
+
+@app.route('/api/documents/<path:document_id>/text', methods=['GET'])
+def get_document_text(document_id):
+    """
+    Extract and return text content from a specific document.
+    document_id can be 'upload_<filename>' or '<project>_<pmcid>'
+    """
+    try:
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        filepath = None
+        
+        # Parse document_id
+        if document_id.startswith('upload_'):
+            # Document from uploads folder
+            filename = document_id.replace('upload_', '', 1)
+            upload_folder = app.config['UPLOAD_FOLDER']
+            filepath = os.path.join(upload_folder, filename)
+            
+            # Security check: ensure file is within upload folder
+            safe_path = os.path.abspath(filepath)
+            if not safe_path.startswith(os.path.abspath(upload_folder)):
+                return jsonify({'error': 'Invalid file path'}), 403
+        else:
+            # Document from pygetpapers project
+            # Format: <project_name>_<pmcid>
+            parts = document_id.split('_')
+            if len(parts) < 2:
+                return jsonify({'error': 'Invalid document ID'}), 400
+            
+            # Find where PMC starts (pmcid always starts with PMC)
+            pmc_index = None
+            for i, part in enumerate(parts):
+                if part.startswith('PMC'):
+                    pmc_index = i
+                    break
+            
+            if pmc_index is None:
+                return jsonify({'error': 'Invalid document ID format'}), 400
+            
+            project_name = '_'.join(parts[:pmc_index])
+            pmcid = '_'.join(parts[pmc_index:])
+            
+            filepath = os.path.join(base_dir, project_name, pmcid, 'fulltext.xml')
+            
+            # Security check: ensure file is within base directory
+            safe_path = os.path.abspath(filepath)
+            if not safe_path.startswith(base_dir):
+                return jsonify({'error': 'Invalid file path'}), 403
+        
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Extract text using existing function
+        text_content = extract_text_from_file(filepath)
+        
+        return jsonify({
+            'filename': os.path.basename(filepath),
+            'text': text_content
+        })
+    except Exception as e:
+        app.logger.error(f"Error extracting text from {document_id}: {e}")
+        return jsonify({'error': 'Failed to extract text from document'}), 500
+
+@app.route('/api/extract-relations', methods=['POST'])
+def extract_relations_route():
+    """
+    Extracts patterns and relations from a given text document.
+    Accepts a JSON payload with a "text" field.
+    """
+    data = request.get_json()
+    text = data.get('text')
+
+    if not text:
+        return jsonify({'error': 'Text content is required'}), 400
+
+    try:
+        entity_extraction = EntityExtraction()
+        results = entity_extraction.extract_patterns_and_relations(text)
+        return jsonify(results)
+    except Exception as e:
+        # Log the exception for debugging
+        app.logger.error(f"Error during relation extraction: {e}")
+        return jsonify({'error': 'An error occurred during analysis.'}), 500
+
 @app.route('/api/analyze', methods=['POST'])
 def start_analysis_route():
     data = request.get_json()
