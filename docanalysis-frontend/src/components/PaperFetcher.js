@@ -26,14 +26,6 @@ const PaperFetcher = ({ projectId, onFetchComplete }) => {
     setFetchResult(null);
 
     try {
-      const token = localStorage.getItem('access_token');
-      
-      // Check if we have a valid token
-      if (!token) {
-        setError('Authentication required. Please log in.');
-        return;
-      }
-
       const response = await axios.post(
         `http://localhost:8000/projects/${projectId}/fetch-papers`,
         {
@@ -42,7 +34,6 @@ const PaperFetcher = ({ projectId, onFetchComplete }) => {
         },
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }

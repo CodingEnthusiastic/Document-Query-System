@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // ⚠️ Change this if accessing backend from another device
-const API_BASE_URL = 'http://localhost:5000/api'; 
+const API_BASE_URL = 'http://localhost:8000'; 
 
 // Axios instance
 const api = axios.create({
@@ -40,34 +40,28 @@ const apiService = {
     return await api.get('/health');
   },
 
-  // ✅ File upload
-  async uploadFiles(formData) {
-    const res = await axios.post(`${API_BASE_URL}/upload`, formData, {
+  // ✅ File upload - needs to be updated to match backend API structure
+  async uploadFiles(projectId, formData) {
+    const res = await axios.post(`${API_BASE_URL}/projects/${projectId}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
     });
     return res.data;
   },
 
-  // ✅ Fetch papers
-  async fetchPapers({ query, hits }) {
-    return await api.post('/fetch-papers', { query, hits });
+  // ✅ Fetch papers - keeping the same since this was already working with the backend
+  async fetchPapers(projectId, { query, hits }) {
+    return await api.post(`/projects/${projectId}/fetch-papers`, { query, hits });
   },
 
   // ✅ Start analysis for uploaded files
-  async startUploadAnalysis(config) {
-    return await api.post('/analyze', {
-      ...config,
-      job_type: 'upload',
-    });
+  async startUploadAnalysis(projectId) {
+    return await api.post(`/projects/${projectId}/analyze`);
   },
 
   // ✅ Start analysis for existing project
-  async analyzeExistingProject(config) {
-    return await api.post('/analyze', {
-      ...config,
-      job_type: 'existing_project',
-    });
+  async analyzeExistingProject(projectId) {
+    return await api.post(`/projects/${projectId}/analyze`);
   },
 
   // ✅ Start analysis for freshly fetched papers
@@ -77,7 +71,7 @@ const apiService = {
 
   // ✅ Get job status
   async getJobStatus(jobId) {
-    return await api.get(`/status/${jobId}`);
+    return await api.get(`/jobs/${jobId}`);
   },
 
   // ✅ Download results
@@ -118,8 +112,8 @@ const apiService = {
   },
 
   // ✅ Get list of documents
-  async getDocuments() {
-    return await api.get('/documents');
+  async getDocuments(projectId) {
+    return await api.get(`/projects/${projectId}/documents`);
   },
 
   // ✅ Get text content from a document

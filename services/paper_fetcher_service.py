@@ -1,33 +1,37 @@
 import asyncio
+from asyncio.log import logger
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
-from pygetpapers import Pygetpapers
 from pathlib import Path
 import shutil
+import subprocess
+import xml.etree.ElementTree as ET
 
 from models.document import DocumentAnalysis
 from models.project import ResearchProject
 from services.document_service import DocumentService
+
 
 class PaperFetcher:
     def __init__(self):
         self.document_service = DocumentService()
     
     async def fetch_papers(self, project_id: str, query: str, hits: int = 10) -> Dict[str, Any]:
-        """Fetch research papers using pygetpapers and add them to the project"""
+        """Fetch research papers using pygetpapers CLI command"""
         try:
             # Get the project to verify access
             project = await ResearchProject.get(project_id)
             if not project:
                 raise ValueError(f"Project with ID {project_id} not found")
             
-            # Run pygetpapers in thread pool to avoid blocking
+            # Run pygetpapers using subprocess (matching CLI behavior)
             loop = asyncio.get_event_loop()
             with ThreadPoolExecutor() as pool:
                 result = await loop.run_in_executor(
                     pool, 
-                    self._run_pygetpapers_sync, 
-                    query, hits, project_id, project.name
+                    self._run_pygetpapers_cli, 
+                    query, hits, project.name
                 )
             
             # Process the papers asynchronously after download
@@ -41,38 +45,67 @@ class PaperFetcher:
             return result
             
         except Exception as e:
+            logger.error(f"Fetch papers error: {e}")
             return {
                 "status": "error",
                 "error": str(e),
                 "fetched_papers": 0
             }
     
-    def _run_pygetpapers_sync(self, query: str, hits: int, project_id: str, project_name: str) -> Dict[str, Any]:
-        """Synchronous wrapper for pygetpapers"""
+    def _run_pygetpapers_cli(self, query: str, hits: int, project_name: str) -> Dict[str, Any]:
+        """Run pygetpapers as CLI command (matching what works)"""
         # Create a safe directory name
         safe_project_name = "".join(c for c in project_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        project_dir = Path(f"data/pygetpapers_{safe_project_name}_{project_id}")
+        project_dir = Path(f"pygetpapers_{safe_project_name}_{int(time.time())}")
         project_dir.mkdir(parents=True, exist_ok=True)
         
         try:
-            # Use pygetpapers to fetch papers
-            pygetpapers = Pygetpapers()
-            print(f"Fetching papers for query: '{query}' with {hits} hits")
+            print(f"DEBUG: Running pygetpapers CLI for query: '{query}' with {hits} hits")
+            print(f"DEBUG: Output directory: {project_dir}")
             
-            pygetpapers.run_command(
-                query=query, 
-                limit=hits, 
-                output=str(project_dir),
-                xml=True
+            # Build the exact command that works from CLI
+            cmd = [
+                "pygetpapers",
+                "-q", query,
+                "-k", str(hits),
+                "-x",
+                "-o", str(project_dir)
+            ]
+            
+            print(f"DEBUG: Executing command: {' '.join(cmd)}")
+            
+            # Run the command
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120  # 2 minute timeout
             )
             
-            # Collect paper paths for async processing
+            print(f"DEBUG: Command return code: {result.returncode}")
+            if result.stderr:
+                print(f"DEBUG: Command stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                raise Exception(f"pygetpapers failed with return code {result.returncode}: {result.stderr}")
+            
+            # Collect paper paths - look for the directory structure pygetpapers creates
             paper_paths = []
-            for pmc_dir in project_dir.iterdir():
-                if pmc_dir.is_dir() and pmc_dir.name.startswith('PMC'):
-                    fulltext_xml = pmc_dir / 'fulltext.xml'
+            
+            # pygetpapers creates a directory structure like: output_dir/PMC123456/fulltext.xml
+            for item in project_dir.iterdir():
+                if item.is_dir():
+                    print(f"DEBUG: Found directory: {item.name}")
+                    fulltext_xml = item / 'fulltext.xml'
                     if fulltext_xml.exists():
-                        paper_paths.append((fulltext_xml, pmc_dir.name))
+                        paper_paths.append((fulltext_xml, item.name))
+                        print(f"DEBUG: Found paper: {item.name}")
+                    else:
+                        # Check what files are in this directory for debugging
+                        files = list(item.iterdir())
+                        print(f"DEBUG: Files in {item.name}: {[f.name for f in files]}")
+            
+            print(f"DEBUG: Total papers found: {len(paper_paths)}")
             
             return {
                 "status": "success",
@@ -81,11 +114,28 @@ class PaperFetcher:
                 "downloaded_count": len(paper_paths)
             }
             
-        except Exception as e:
-            # Clean up on error
+        except subprocess.TimeoutExpired:
+            print("DEBUG: pygetpapers command timed out")
             if project_dir.exists():
                 shutil.rmtree(project_dir)
-            raise e
+            return {
+                "status": "error",
+                "error": "pygetpapers command timed out",
+                "downloaded_count": 0,
+                "paper_paths": []
+            }
+        except Exception as e:
+            print(f"DEBUG: Error in _run_pygetpapers_cli: {e}")
+            import traceback
+            traceback.print_exc()
+            if project_dir.exists():
+                shutil.rmtree(project_dir)
+            return {
+                "status": "error",
+                "error": str(e),
+                "downloaded_count": 0,
+                "paper_paths": []
+            }
     
     async def _process_papers_async(self, paper_paths: List[tuple], project_id: str) -> Dict[str, Any]:
         """Process downloaded papers asynchronously"""
@@ -145,8 +195,6 @@ class PaperFetcher:
     def _extract_content_from_xml(self, xml_path: Path) -> str:
         """Extract readable text content from JATS XML"""
         try:
-            import xml.etree.ElementTree as ET
-            
             tree = ET.parse(xml_path)
             root = tree.getroot()
             

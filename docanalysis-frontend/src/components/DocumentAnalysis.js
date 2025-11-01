@@ -10,30 +10,31 @@ const DocumentAnalysis = () => {
   const [documents, setDocuments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [analysisResults, setAnalysisResults] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  // Check if user is already logged in on component mount
-  useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-  }, []);
+  // No authentication required - always treat user as logged in
+  const isLoggedIn = true;
 
   const handleLoginStatusChange = () => {
-    const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
+    // No operation needed as we're removing auth
   };
 
-  // Mock data - in a real app, this would come from the API
+  // Load projects from API
   useEffect(() => {
-    if (isLoggedIn) {
-      // Load projects
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      // In a real implementation, call the API to get projects
+      // For now, using mock data
       setProjects([
         { id: '1', name: 'Machine Learning Research', description: 'Papers on deep learning and NLP', createdAt: '2023-10-15' },
         { id: '2', name: 'Climate Change Studies', description: 'Environmental impact research', createdAt: '2023-11-20' },
         { id: '3', name: 'Medical Innovations', description: 'Latest medical research papers', createdAt: '2023-12-05' }
       ]);
+    } catch (error) {
+      console.error('Error loading projects:', error);
     }
-  }, [isLoggedIn]);
+  };
 
   const handleProjectSelect = (projectId) => {
     setSelectedProject(projectId);
@@ -95,25 +96,19 @@ const DocumentAnalysis = () => {
     });
   };
 
-  const handleFetchComplete = () => {
+  const handleFetchComplete = async () => {
     // Refresh documents after fetching new papers
-    // This would call the API to get updated document list
+    if (selectedProject) {
+      try {
+        const docs = await apiService.getDocuments(selectedProject);
+        setDocuments(docs);
+      } catch (error) {
+        console.error('Error refreshing documents:', error);
+      }
+    }
   };
 
-  // Show login form if not logged in
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Document Analysis Platform</h1>
-            <p className="text-gray-600">Advanced NLP-powered research paper analysis</p>
-          </div>
-          <Login onLogin={handleLoginStatusChange} />
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -123,22 +118,7 @@ const DocumentAnalysis = () => {
           <p className="text-gray-600">Advanced NLP-powered research paper analysis</p>
         </div>
 
-        {/* Login status header */}
-        <div className="mb-6 bg-white rounded-lg shadow p-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <span className="text-sm font-medium text-green-700">Authenticated</span>
-          </div>
-          <button 
-            onClick={() => {
-              localStorage.removeItem('access_token');
-              handleLoginStatusChange();
-            }}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            Logout
-          </button>
-        </div>
+        {/* No auth status header needed */}
 
         {/* Project Selection */}
         <div className="mb-8 bg-white rounded-lg shadow p-6">

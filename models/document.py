@@ -5,7 +5,7 @@ from pydantic import Field
 
 class DocumentAnalysis(Document):
     """Document analysis model"""
-    project_id: str  # Reference to Project.id
+    project_id: str  # Matches the ResearchProject.id (string)
     original_filename: str
     file_path: str
     file_size: int

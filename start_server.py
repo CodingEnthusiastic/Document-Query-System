@@ -11,7 +11,7 @@ from pathlib import Path
 def install_dependencies():
     """Install required dependencies"""
     print("Installing dependencies...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "new_requirements.txt"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
 def setup_spacy_model():
     """Download required spaCy model"""
@@ -27,7 +27,7 @@ def setup_spacy_model():
 def start_api_server():
     """Start the API server"""
     print("Starting API server...")
-    subprocess.check_call([sys.executable, "-m", "uvicorn", "new_api_server:app", "--host", "0.0.0.0", "--port", "8000"])
+    subprocess.check_call([sys.executable, "-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"])
 
 def main():
     """Main startup function"""
