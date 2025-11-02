@@ -33,25 +33,68 @@ class FileProcessor:
     
     @staticmethod 
     def extract_text_from_xml(file_path: str) -> str:
-        """Extract text content from XML file"""
+        """Extract text content from XML file with preserved structure"""
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
-                # Parse XML and extract text content
+                
+                # Parse XML and extract text content with structure
                 try:
                     root = ET.fromstring(content)
-                    # Extract all text content recursively
-                    text_content = []
-                    for elem in root.iter():
-                        if elem.text:
-                            text_content.append(elem.text.strip())
-                    return " ".join(text_content)
+                    return FileProcessor._extract_structured_text(root)
                 except ET.ParseError:
-                    # If XML parsing fails, try to extract text with BeautifulSoup
+                    # If XML parsing fails, try to extract text with BeautifulSoup with structure
                     soup = BeautifulSoup(content, 'xml')
-                    return soup.get_text()
+                    return FileProcessor._extract_structured_text_soup(soup)
+                    
         except Exception as e:
             return f"Error reading XML file: {str(e)}"
+
+    @staticmethod
+    def _extract_structured_text(element) -> str:
+        """Recursively extract text from XML elements with structure"""
+        text_parts = []
+        
+        # Add element text
+        if element.text and element.text.strip():
+            text_parts.append(element.text.strip())
+        
+        # Process child elements
+        for child in element:
+            child_text = FileProcessor._extract_structured_text(child)
+            if child_text:
+                text_parts.append(child_text)
+            
+            # Add tail text (text after the element)
+            if child.tail and child.tail.strip():
+                text_parts.append(child.tail.strip())
+        
+        # Join with appropriate spacing based on element type
+        tag = element.tag.lower() if hasattr(element, 'tag') else ''
+        
+        if any(section in tag for section in ['title', 'abstract', 'section', 'div']):
+            return '\n\n' + ' '.join(text_parts) + '\n\n'
+        elif any(para in tag for para in ['p', 'paragraph']):
+            return ' '.join(text_parts) + '\n\n'
+        else:
+            return ' '.join(text_parts)
+
+    @staticmethod
+    def _extract_structured_text_soup(soup) -> str:
+        """Extract structured text from BeautifulSoup object"""
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Get text with preserved structure
+        text = soup.get_text()
+        
+        # Clean up whitespace but preserve paragraph breaks
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+        
+        return text
     
     @staticmethod
     def extract_text_from_html(file_path: str) -> str:

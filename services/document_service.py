@@ -11,6 +11,8 @@ from docx import Document as DocxDocument
 from pathlib import Path
 import aiofiles
 
+from utils.text_processor import TextProcessor
+
 class DocumentService:
     def __init__(self):
         self.file_processor = FileProcessor()
@@ -32,6 +34,10 @@ class DocumentService:
         file_ext = Path(file.filename).suffix.lower()
         
         # Determine file type
+        # NEW VERSION:
+        # Determine file type and extract content
+        html_content = None  # Initialize html_content
+
         if file_ext == '.pdf':
             file_type = 'pdf'
             content_text = self._extract_pdf_content(temp_file_path)
@@ -41,16 +47,17 @@ class DocumentService:
         elif file_ext in ['.xml', '.html']:
             file_type = 'xml'
             content_text = self._extract_xml_content(temp_file_path)
+            html_content = content_text  # This will now be HTML from XSLT
         elif file_ext == '.txt':
             file_type = 'txt'
             content_text = self._extract_txt_content(temp_file_path)
         else:
             file_type = 'unknown'
             content_text = "Content type not supported for text extraction"
-        
+
         # Compute embedding for semantic search if possible
         content_vector = await self._get_content_vector(content_text)
-        
+
         # Create document analysis record
         document = DocumentAnalysis(
             project_id=project_id,
@@ -58,7 +65,8 @@ class DocumentService:
             file_path=temp_file_path,
             file_size=file_size,
             file_type=file_type,
-            content=content_text,
+            content=content_text,  # Original text content
+            html_content=html_content,  # Formatted HTML content (None for non-XML files)
             content_vector=content_vector,
             entities=[],
             relationships=[],
@@ -91,17 +99,57 @@ class DocumentService:
             return f"Error reading DOCX file: {str(e)}"
 
     def _extract_xml_content(self, file_path: str) -> str:
-        """Extract text content from XML/HTML file"""
+        """Extract text content from XML file using JATS XSLT converter"""
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                # Remove XML/HTML tags to get plain text
-                import re
-                clean_text = re.sub('<[^<]+?>', '', content)
-                return clean_text
+                xml_content = file.read()
+                
+                # Use JATS XSLT converter
+                return self._transform_jats_to_html(xml_content, "jats_to_html.xsl")
+                    
         except Exception as e:
-            return f"Error reading XML file: {str(e)}"
+            print(f"Error in XML extraction: {e}")
+            return self._extract_xml_fallback(xml_content)
 
+    def _transform_jats_to_html(self, xml_content: str, xslt_path: str) -> str:
+        """Transform JATS XML to HTML using XSLT"""
+        try:
+            import lxml.etree as ET
+            
+            # Parse XML
+            xml_doc = ET.fromstring(xml_content.encode('utf-8'))
+            
+            # Parse XSLT
+            xslt_doc = ET.parse(xslt_path)
+            transform = ET.XSLT(xslt_doc)
+            
+            # Transform XML to HTML
+            html_doc = transform(xml_doc)
+            html_content = str(html_doc)
+            
+            print("Successfully transformed JATS XML to HTML")
+            return html_content
+            
+        except ImportError:
+            print("lxml not available, using fallback")
+            return self._extract_xml_fallback(xml_content)
+        except Exception as e:
+            print(f"XSLT transformation failed: {e}")
+            return self._extract_xml_fallback(xml_content)
+
+    def _extract_xml_fallback(self, xml_content: str) -> str:
+        """Fallback XML extraction if XSLT fails"""
+        try:
+            from utils.file_processor import FileProcessor
+            file_processor = FileProcessor()
+            return file_processor.extract_text_from_xml_content(xml_content)
+        except:
+            # Basic fallback
+            import re
+            clean_text = re.sub('<[^>]+>', '', xml_content)
+            clean_text = re.sub(r'\s+', ' ', clean_text)
+            return clean_text.strip()
+        
     def _extract_txt_content(self, file_path: str) -> str:
         """Extract text content from TXT file"""
         try:

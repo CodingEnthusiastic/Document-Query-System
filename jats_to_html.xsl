@@ -182,17 +182,36 @@
 
   <xsl:template match="fig">
     <div class="fig">
-      <xsl:apply-templates select="label"/>
+      <xsl:if test="label">
+        <div class="fig-label"><xsl:value-of select="label"/></div>
+      </xsl:if>
+      
+      <!-- Handle graphics with proper image paths -->
+      <xsl:for-each select=".//graphic">
+        <img>
+          <xsl:attribute name="src">
+            <xsl:choose>
+              <!-- If it's a PMC image, construct proper URL -->
+              <xsl:when test="contains(@xlink:href, 'pmc') or not(contains(@xlink:href, '://'))">
+                <xsl:text>https://www.ncbi.nlm.nih.gov</xsl:text>
+                <xsl:if test="not(starts-with(@xlink:href, '/'))">
+                  <xsl:text>/</xsl:text>
+                </xsl:if>
+                <xsl:value-of select="@xlink:href"/>
+              </xsl:when>
+              <xsl:otherwise>
+                <xsl:value-of select="@xlink:href"/>
+              </xsl:otherwise>
+            </xsl:choose>
+          </xsl:attribute>
+          <xsl:attribute name="alt">
+            <xsl:value-of select="../../caption/p | ../../caption/title"/>
+          </xsl:attribute>
+          <xsl:attribute name="loading">lazy</xsl:attribute>
+        </img>
+      </xsl:for-each>
+      
       <xsl:apply-templates select="caption"/>
-      <!-- Note: This assumes graphic/@href points to an image. This might need adjustment based on actual XML structure -->
-      <img>
-        <xsl:attribute name="src">
-          <xsl:value-of select=".//graphic/@href"/>
-        </xsl:attribute>
-        <xsl:attribute name="alt">
-          <xsl:value-of select="caption"/>
-        </xsl:attribute>
-      </img>
     </div>
   </xsl:template>
   

@@ -1,24 +1,25 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from beanie import Document
 from pydantic import Field
 
 class DocumentAnalysis(Document):
-    """Document analysis model"""
-    project_id: str  # Matches the ResearchProject.id (string)
+    project_id: str
     original_filename: str
     file_path: str
     file_size: int
-    file_type: str  # 'pdf', 'xml', 'docx', etc.
-    content: str  # Extracted text content
-    content_vector: Optional[List[float]] = None  # For semantic search
-    entities: List[dict] = []  # Extracted entities and their positions
-    relationships: List[dict] = []  # Extracted relationships
-    topics: List[dict] = []  # Topic modeling results
+    file_type: str
+    content: str
+    html_content: Optional[str] = None  # ADD THIS LINE
+    content_vector: Optional[List[float]] = None
+    entities: List[Dict] = []
+    relationships: List[Dict] = []
+    topics: List[Dict] = []
     summary: Optional[str] = None
     analyzed: bool = False
     analysis_timestamp: Optional[datetime] = None
-    metadata: dict = {}  # Additional metadata like authors, journal, etc.
-    
+    metadata: Dict = {}
+
     class Settings:
         name = "document_analyses"
+        use_state_management = True

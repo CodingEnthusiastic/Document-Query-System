@@ -5,7 +5,9 @@ Automatic project creation and management
 """
 
 import os
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, BackgroundTasks, Request
+
+from requests import Response
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, BackgroundTasks, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from pydantic import BaseModel
@@ -661,6 +663,161 @@ async def get_document_annotations(request: Request, document_id: str):
     except Exception as e:
         logger.error(f"Get document annotations error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/debug/test-xslt")
+async def test_xslt_transformation():
+    """Test if XSLT transformation works"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        # Test with a simple XML
+        test_xml = """<?xml version="1.0"?>
+        <article>
+            <front>
+                <article-meta>
+                    <title-group>
+                        <article-title>Test Article Title</article-title>
+                    </title-group>
+                    <abstract>
+                        <p>This is a test abstract.</p>
+                    </abstract>
+                </article-meta>
+            </front>
+            <body>
+                <sec>
+                    <title>Introduction</title>
+                    <p>This is a test paragraph.</p>
+                </sec>
+            </body>
+        </article>"""
+        
+        result = service._transform_jats_to_html(test_xml, "jats_to_html.xsl")
+        
+        return {
+            "success": "html" in result.lower(),
+            "result_preview": result[:500],
+            "result_length": len(result)
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+    
+@app.post("/projects/{project_id}/regenerate-html")
+async def regenerate_html_for_project(request: Request, project_id: str):
+    """Regenerate HTML content for all documents in a project"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        documents = await DocumentAnalysis.find({"project_id": project_id}).to_list()
+        updated_count = 0
+        
+        for doc in documents:
+            if doc.file_type == 'xml' and doc.file_path:
+                print(f"🔄 Regenerating HTML for: {doc.original_filename}")
+                
+                # Re-extract content using XSLT
+                try:
+                    with open(doc.file_path, 'r', encoding='utf-8') as file:
+                        xml_content = file.read()
+                        html_content = service._extract_xml_content(doc.file_path)
+                        
+                        # Update document with HTML content
+                        doc.html_content = html_content
+                        await doc.save()
+                        updated_count += 1
+                        print(f"✅ Updated HTML for: {doc.original_filename}")
+                        
+                except Exception as e:
+                    print(f"❌ Failed to regenerate HTML for {doc.original_filename}: {e}")
+        
+        return {
+            "project_id": project_id,
+            "documents_processed": len(documents),
+            "documents_updated": updated_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Regenerate HTML error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/documents/{document_id}/html")
+@limiter.limit("30/minute")
+async def get_document_html(request: Request, document_id: str):
+    """Get HTML content of a document"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # If no HTML content stored, generate it on the fly
+        html_content = document.html_content
+        if not html_content and document.file_type == 'xml' and document.file_path:
+            print(f"🔄 Generating HTML on-the-fly for: {document.original_filename}")
+            try:
+                with open(document.file_path, 'r', encoding='utf-8') as file:
+                    xml_content = file.read()
+                    html_content = service._extract_xml_content(document.file_path)
+                    
+                    # Optionally save it back to the database
+                    document.html_content = html_content
+                    await document.save()
+            except Exception as e:
+                print(f"❌ On-the-fly HTML generation failed: {e}")
+                html_content = document.content
+        
+        return {
+            "html": html_content or document.content,
+            "filename": document.original_filename,
+            "has_html": html_content is not None and html_content != document.content
+        }
+    except Exception as e:
+        logger.error(f"Get document HTML error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/proxy/image")
+async def proxy_image(request: Request, url: str = Query(...)):
+    """Proxy images to handle CORS and path issues"""
+    try:
+        import aiohttp
+        import base64
+        
+        async with aiohttp.ClientSession() as session:
+            # Construct proper PMC URL if needed
+            if url.startswith('pmc') or not url.startswith('http'):
+                if not url.startswith('/'):
+                    url = '/' + url
+                url = f"https://www.ncbi.nlm.nih.gov{url}"
+            
+            async with session.get(url) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    media_type = response.headers.get('content-type', 'image/jpeg')
+                    
+                    return Response(
+                        content=content,
+                        media_type=media_type
+                    )
+                else:
+                    # Return placeholder image
+                    placeholder_svg = '''<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="100%" height="100%" fill="#f7f7f7"/>
+                        <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="14" fill="#999" text-anchor="middle" dy=".3em">Image not available</text>
+                    </svg>'''
+                    return Response(content=placeholder_svg.encode(), media_type="image/svg+xml")
+                    
+    except Exception as e:
+        logger.error(f"Image proxy error: {e}")
+        # Return error placeholder
+        error_svg = '''<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#fee"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="14" fill="#c33" text-anchor="middle" dy=".3em">Failed to load image</text>
+        </svg>'''
+        return Response(content=error_svg.encode(), media_type="image/svg+xml")
 
 @app.get("/documents/{document_id}/text")
 @limiter.limit("30/minute")

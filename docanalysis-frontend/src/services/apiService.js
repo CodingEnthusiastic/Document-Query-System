@@ -49,6 +49,11 @@ const apiService = {
     return res.data;
   },
 
+  // ✅ Get HTML content from a document
+  async getDocumentHTML(documentId) {
+    return await api.get(`/documents/${encodeURIComponent(documentId)}/html`);
+  },
+
   // ✅ Fetch papers - keeping the same since this was already working with the backend
   async fetchPapers(projectId, { query, hits }) {
     return await api.post(`/projects/${projectId}/fetch-papers`, { query, hits });
