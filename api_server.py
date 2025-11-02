@@ -31,6 +31,7 @@ from models.job import AnalysisJob
 from models.project import ResearchProject
 from models.annotation import Annotation
 from models.semantic_chunk import SemanticChunk
+from models.dictionary import CustomDictionary
 
 # Import services
 from services.document_service import DocumentService
@@ -97,7 +98,8 @@ async def startup_event():
                 AnalysisJob,
                 ResearchProject,
                 Annotation,
-                SemanticChunk
+                SemanticChunk,
+                CustomDictionary
             ]
         )
         logger.info("Database initialized successfully")
@@ -223,6 +225,33 @@ async def get_project(request: Request, project_id: str):
         return project
     except Exception as e:
         logger.error(f"Get project error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_id}")
+@limiter.limit("10/minute")
+async def delete_project(request: Request, project_id: str):
+    """Delete a project and all its documents"""
+    try:
+        # Find the project
+        project = await ResearchProject.get(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Delete all documents in the project
+        await DocumentAnalysis.find(DocumentAnalysis.project_id == project_id).delete()
+        
+        # Delete all analysis jobs for the project
+        await AnalysisJob.find(AnalysisJob.project_id == project_id).delete()
+        
+        # Delete the project itself
+        await project.delete()
+        
+        logger.info(f"Deleted project: {project.name} (ID: {project_id})")
+        return {"message": "Project deleted successfully", "project_id": project_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete project error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== PAPER FETCHING ====================
@@ -444,12 +473,17 @@ async def analyze_papers_auto(
 @limiter.limit("30/minute")
 async def get_project_documents(request: Request, project_id: str):
     """Get all documents in a project"""
-    try:
+    try:        
         project = await get_or_create_project(project_id=project_id)
         
-        documents = await DocumentAnalysis.find(
-            DocumentAnalysis.project_id == project_id
-        ).to_list()
+        
+        documents = await DocumentAnalysis.find({
+            "$or": [
+                {"project_id": project_id},
+                {"project_id": str(project_id)},
+                {"project_id": int(project_id) if project_id.isdigit() else project_id}
+            ]
+        }).to_list()
         
         return {
             "project_id": str(project.id),
@@ -628,6 +662,63 @@ async def get_document_annotations(request: Request, document_id: str):
         logger.error(f"Get document annotations error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/documents/{document_id}/text")
+@limiter.limit("30/minute")
+async def get_document_text(request: Request, document_id: str):
+    """Get text content of a document"""
+    try:
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            "text": document.content,
+            "filename": document.original_filename,
+            "metadata": document.metadata
+        }
+    except Exception as e:
+        logger.error(f"Get document text error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/documents/{document_id}")
+@limiter.limit("20/minute")
+async def delete_document(request: Request, document_id: str):
+    """Delete a document and its associated data"""
+    try:
+        # Find the document
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Delete associated annotations
+        await Annotation.find(Annotation.document_id == document_id).delete()
+        
+        # Delete associated semantic chunks
+        await SemanticChunk.find(SemanticChunk.document_id == document_id).delete()
+        
+        # Delete the document file if it exists
+        if document.file_path and os.path.exists(document.file_path):
+            try:
+                os.remove(document.file_path)
+                logger.info(f"Deleted file: {document.file_path}")
+            except Exception as file_error:
+                logger.warning(f"Could not delete file {document.file_path}: {file_error}")
+        
+        # Delete the document record
+        await document.delete()
+        
+        logger.info(f"Deleted document: {document.original_filename} (ID: {document_id})")
+        return {
+            "message": "Document deleted successfully",
+            "document_id": document_id,
+            "filename": document.original_filename
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== ADDITIONAL ENDPOINTS ====================
 
 @app.post("/extract-relations")
@@ -643,7 +734,11 @@ async def extract_relations(request: Request, data: dict):
         extractor = RelationshipExtractor()
         relationships = await extractor.extract_relationships(text)
         
-        return {"relationships": relationships}
+        # Format response to match frontend expectations
+        return {
+            "patterns": [],  # Could add pattern-based extraction here
+            "relations": relationships  # Already in correct format
+        }
     except Exception as e:
         logger.error(f"Extract relations error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -691,14 +786,68 @@ async def start_thematic_clustering(
 async def get_dictionaries(request: Request):
     """Get available dictionaries"""
     try:
-        dictionaries = [
-            {"id": "1", "name": "Medical Terms", "description": "Medical terminology dictionary"},
-            {"id": "2", "name": "Scientific Terms", "description": "Scientific terminology dictionary"},
-            {"id": "3", "name": "Common Entities", "description": "General entity dictionary"}
-        ]
-        return {"dictionaries": dictionaries}
+        dicts = await CustomDictionary.find_all().to_list()
+        return {
+            "dictionaries": [
+                {"id": str(d.id), "name": d.name, "entries": len(d.terms), "description": d.description} 
+                for d in dicts
+            ]
+        }
     except Exception as e:
         logger.error(f"Get dictionaries error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dictionaries/validate")
+@limiter.limit("20/minute")
+async def validate_dictionary(request: Request, data: dict):
+    """Validate dictionary data before creation"""
+    try:
+        name = data.get("name", "")
+        terms = data.get("terms", [])
+        
+        errors = []
+        warnings = []
+        
+        if not name:
+            errors.append("Dictionary name is required")
+        if len(terms) == 0:
+            errors.append("At least one term is required")
+        
+        unique_terms = set([t["term"].lower() for t in terms if isinstance(t, dict) and "term" in t])
+        duplicates = len(terms) - len(unique_terms)
+        
+        if duplicates > 0:
+            warnings.append(f"Found {duplicates} duplicate terms")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "stats": {
+                "total_terms": len(terms),
+                "unique_terms": len(unique_terms),
+                "duplicates": duplicates
+            }
+        }
+    except Exception as e:
+        logger.error(f"Validate dictionary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dictionaries/create")
+@limiter.limit("10/minute")
+async def create_dictionary(request: Request, data: dict):
+    """Create a new custom dictionary"""
+    try:
+        dictionary = CustomDictionary(
+            name=data["name"],
+            description=data.get("description"),
+            terms=data["terms"],
+            created_by="anonymous"
+        )
+        await dictionary.insert()
+        return {"message": "Dictionary created successfully", "id": str(dictionary.id)}
+    except Exception as e:
+        logger.error(f"Create dictionary error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sections")

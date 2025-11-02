@@ -173,12 +173,20 @@ class DocumentService:
                 # In a real implementation, you'd use a proper vector database
                 documents = await DocumentAnalysis.find({"project_id": project_id}).to_list()
                 
+                # DEBUG: Log what we're searching
+                print(f"   SEMANTIC SEARCH DEBUG:")
+                print(f"   Query: '{query}'")
+                print(f"   Project ID: {project_id}")
+                print(f"   Documents found: {len(documents)}")
+                print(f"   Documents with vectors: {sum(1 for doc in documents if doc.content_vector)}")
+                
                 # Calculate similarity scores
                 similarities = []
                 for doc in documents:
                     if doc.content_vector:
                         similarity = self._cosine_similarity(query_vector, doc.content_vector)
                         similarities.append((doc, similarity))
+                        print(f"   Document: {doc.original_filename}, Similarity: {similarity:.4f}")
                 
                 # Sort by similarity score
                 similarities.sort(key=lambda x: x[1], reverse=True)
@@ -186,7 +194,7 @@ class DocumentService:
                 # Return top results
                 results = []
                 for doc, score in similarities[:limit]:
-                    if score > 0.1:  # Threshold for relevance
+                    if score > 0.05:  # Threshold for relevance
                         results.append({
                             "document_id": str(doc.id),
                             "filename": doc.original_filename,
@@ -194,9 +202,12 @@ class DocumentService:
                             "similarity_score": score
                         })
                 
+                print(f"   Results after threshold: {len(results)}")
                 return results
         except ImportError:
             pass  # If vector store is not available, return empty results
+        except Exception as e:
+            print(f"Semantic search error: {e}")
         
         # Fallback: return empty results
         return []

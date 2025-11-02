@@ -98,16 +98,15 @@ const PaperFetcher = ({ projectId, onFetchComplete }) => {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Number of Papers
           </label>
-          <select
+          <input
+            type="number"
+            min="1"
+            max="100"
             value={numPapers}
             onChange={(e) => setNumPapers(Number(e.target.value))}
+            placeholder="e.g., 10"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value={5}>5 papers</option>
-            <option value={10}>10 papers</option>
-            <option value={20}>20 papers</option>
-            <option value={50}>50 papers</option>
-          </select>
+          />
         </div>
         
         <div className="flex items-end">

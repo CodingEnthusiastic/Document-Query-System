@@ -1,159 +1,769 @@
-# Functionality-Breaking Errors
+I'll analyze the entire project structure to identify functionalities available in the backend but not accessible or incompletely implemented in the frontend.After deeply analyzing the entire project structure, here are all the incompletely implemented or missing frontend functionalities that exist in the backend:
 
-## **Import/Module Errors - WILL CRASH**
+---
 
-1. **Missing `__init__.py` files** in `services/`, `nlp/`, `utils/` directories - Python won't recognize them as packages, imports will fail
-2. **Frontend API base URL mismatch** - Frontend calls `localhost:5000` but backend runs on port `8000` - all API calls will fail
-3. **docanalysis/__init__.py imports non-existent classes** - `EntityExtraction` and `Docanalysis` don't match actual file structure
+## **Issue 1: Document Text Extraction and Display**
+**Description:** The backend has a document service (`services/document_service.py`) with methods to extract text from PDF, DOCX, XML, HTML, and TXT files. However, the frontend Dashboard component (`docanalysis-frontend/src/components/Dashboard.js`) has code to select documents and extract text, but there's an API call to `/documents/${encodeURIComponent(documentId)}/text` that **doesn't exist in the backend API**. The backend has `/projects/{project_id}/documents` to get documents but no endpoint to get individual document text.
 
-## **Database Issues - WILL FAIL**
+**Improvements:** 
+1. Add a new backend endpoint in `api_server.py`:
+```python
+@app.get("/documents/{document_id}/text")
+async def get_document_text(document_id: str):
+    document = await DocumentAnalysis.get(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"text": document.content, "filename": document.original_filename}
+```
+2. The frontend Dashboard.js already has the correct implementation for calling this endpoint, so it should work once the backend endpoint is added.
 
-6. **Database never created** - Code assumes `document_analysis` database exists but never creates it
-7. **No MongoDB error handling** - If MongoDB isn't running, server crashes with no useful message
-8. **String IDs instead of ObjectId** - `owner_id` stored as string breaks Beanie relationships
-9. **No database indexes** - Despite README mentioning indexes, none are actually created (slow queries)
+**Files:**
+- `api_server.py` (add new endpoint)
+- `docanalysis-frontend/src/components/Dashboard.js` (already implemented correctly)
 
-## **File Handling - WILL LOSE DATA**
+---
 
-10. **Files saved to temp directory** - OS can delete these anytime, uploaded documents disappear
-11. **No cleanup of temp files** - Disk fills up over time
-12. **File paths stored as strings** - If files move/delete, references break forever
-13. **No file existence check** - Accessing non-existent files crashes the app
+## **Issue 2: Relation Extraction Analysis**
+**Description:** The backend has `/extract-relations` endpoint in `api_server.py` that calls `nlp/relationship_extractor.py`. The frontend has a Dashboard component that can analyze text and display results using `RelationAnalysis.js`, but the component expects data in format `{patterns, relations}`. However, the backend endpoint returns `{relationships}` array. The data structure mismatch means the frontend won't display results correctly.
 
-## **NLP Models (CRITICAL) - WON'T WORK**
+**Improvements:**
+1. Update backend endpoint in `api_server.py` to return data in the format the frontend expects:
+```python
+@app.post("/extract-relations")
+async def extract_relations(request: Request, data: dict):
+    text = data.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    
+    from nlp.relationship_extractor import RelationshipExtractor
+    extractor = RelationshipExtractor()
+    relationships = await extractor.extract_relationships(text)
+    
+    # Format response to match frontend expectations
+    return {
+        "patterns": [],  # Could add pattern-based extraction here
+        "relations": relationships  # Already in correct format
+    }
+```
+2. Or update the frontend `RelationAnalysis.js` to handle the correct backend response format.
 
-14. **spaCy model not automatically installed** - Code assumes `en_core_web_sm` exists but never downloads it
-15. **NLP components can be None** - Code continues even when models fail to load, then crashes when actually used
-16. **Transformers models auto-download** - First run will hang for minutes downloading multi-GB models
-17. **No GPU detection** - Models default to CPU even on GPU machines (extremely slow)
-18. **Model loading on every request** - No caching, each analysis reloads the entire model
+**Files:**
+- `api_server.py` (modify `/extract-relations` endpoint)
+- `nlp/relationship_extractor.py` (already correct)
+- `docanalysis-frontend/src/components/RelationAnalysis.js` (may need adjustment)
 
-## **Authentication (CRITICAL) - CAN'T LOGIN**
+---
 
-19. **SECRET_KEY regenerates on restart** - All existing login tokens become invalid when server restarts
-20. **Password truncation silent** - Passwords over 72 chars are cut off without telling user
-21. **Token in localStorage but not sent** - Some frontend components don't include auth token in requests
-22. **Login component doesn't redirect** - User logs in but stays on login page
+## **Issue 3: Custom Dictionary Creation**
+**Description:** The frontend has a complete Custom Dictionary UI (`docanalysis-frontend/src/components/CustomDictionary.js`) with functionality to create, validate, and manage dictionaries. It calls backend APIs like `/dictionaries`, `apiService.validateDictionary()`, and `apiService.createCustomDictionary()`. However, these endpoints are **completely missing** from the backend. The backend only has a stub endpoint `/dictionaries` that returns mock data.
 
-## **API Endpoint Mismatches (CRITICAL) - 404 ERRORS**
+**Improvements:**
+1. Create a new `models/dictionary.py`:
+```python
+from beanie import Document
+from pydantic import Field
+from typing import List, Optional
+from datetime import datetime
 
-23. **Frontend expects Flask endpoints** - Dashboard calls `/api/analyze` which doesn't exist in FastAPI backend
-24. **Relation extraction endpoint missing** - Frontend calls it but backend doesn't implement it
-25. **Custom dictionary endpoints missing** - Frontend has full UI but no backend API
-26. **Thematic clustering endpoint missing** - apiService.js calls it but doesn't exist
+class DictionaryTerm(BaseModel):
+    term: str
+    category: Optional[str] = None
+    description: Optional[str] = None
 
-## **Background Jobs - WILL HANG**
+class CustomDictionary(Document):
+    name: str
+    description: Optional[str] = None
+    terms: List[dict] = []
+    created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_public: bool = False
+    
+    class Settings:
+        name = "custom_dictionaries"
+```
 
-27. **ThreadPoolExecutor never closed** - Background tasks can leak threads
-28. **No job timeout** - Analysis jobs can run forever if they hang
-29. **Progress jumps 50→75→100** - No intermediate progress updates, users think it's frozen
-30. **Failed jobs never cleaned up** - Database fills with failed job records
-31. **Synchronous pygetpapers call** - Blocks entire server while downloading papers
+2. Add endpoints in `api_server.py`:
+```python
+@app.post("/dictionaries/validate")
+async def validate_dictionary(data: dict):
+    name = data.get("name", "")
+    terms = data.get("terms", [])
+    
+    errors = []
+    warnings = []
+    
+    if not name:
+        errors.append("Dictionary name is required")
+    if len(terms) == 0:
+        errors.append("At least one term is required")
+    
+    unique_terms = set([t["term"].lower() for t in terms])
+    duplicates = len(terms) - len(unique_terms)
+    
+    if duplicates > 0:
+        warnings.append(f"Found {duplicates} duplicate terms")
+    
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "stats": {
+            "total_terms": len(terms),
+            "unique_terms": len(unique_terms),
+            "duplicates": duplicates
+        }
+    }
 
-## **Document Analysis (CRITICAL) - WON'T COMPLETE**
+@app.post("/dictionaries/create")
+async def create_dictionary(data: dict):
+    dictionary = CustomDictionary(
+        name=data["name"],
+        description=data.get("description"),
+        terms=data["terms"],
+        created_by="anonymous"
+    )
+    await dictionary.insert()
+    return {"message": "Dictionary created successfully", "id": str(dictionary.id)}
 
-32. **`analyzed` flag not checked** - Re-analyzing same document duplicates all entities/relationships
-33. **Empty documents accepted** - Analysis runs on empty strings and fails mysteriously
-34. **Text truncation inconsistent** - Some places truncate at 1024 chars, others 10000, causes confusion
-35. **Cross-document analysis does nothing** - Function exists but has comment saying "This could include..." and saves nothing
+@app.get("/dictionaries")
+async def get_dictionaries():
+    dicts = await CustomDictionary.find_all().to_list()
+    return {
+        "dictionaries": [
+            {"id": str(d.id), "name": d.name, "entries": len(d.terms)} 
+            for d in dicts
+        ]
+    }
+```
 
-## **Search Features - RETURNS NOTHING**
+3. Update `apiService.js` to match these endpoints:
+```javascript
+async validateDictionary(data) {
+  return await api.post('/dictionaries/validate', data);
+},
 
-36. **Semantic search requires embeddings** - But embedding generation can fail silently, search returns empty results
-37. **Vector similarity calculation fails on empty vectors** - No validation before math operations
-38. **Keyword search case sensitive** - Searching "COVID" won't find "covid"
-39. **No search result pagination** - Large result sets crash browser
+async createCustomDictionary(data) {
+  return await api.post('/dictionaries/create', data);
+},
+```
 
-## **Paper Fetching (CRITICAL) - WILL FAIL**
+**Files:**
+- `models/dictionary.py` (create new file)
+- `api_server.py` (add endpoints)
+- `docanalysis-frontend/src/services/apiService.js` (update methods)
+- `docanalysis-frontend/src/components/CustomDictionary.js` (already implemented)
 
-40. **pygetpapers directory not cleaned** - Each fetch creates new directory, disk fills up
-41. **No validation of query string** - Invalid queries crash pygetpapers
-42. **XML parsing assumes specific structure** - Many papers have different XML formats, extraction fails
-43. **No handling of fetch failures** - If PMC is down, entire operation fails with no retry
+---
 
-## **Frontend Components - WON'T DISPLAY**
+## **Issue 4: Thematic Clustering Analysis**
+**Description:** The frontend `apiService.js` has a method `startThematicClustering()` that calls `/analyze/thematic-clustering`. The backend has a stub endpoint for this, but it just creates a job without actual implementation. There's no clustering logic in the NLP modules.
 
-44. **Mock data in DocumentAnalysis.js** - Component shows fake data instead of real API data
-45. **RelationAnalysis expects different data format** - Backend sends different structure than component expects
-46. **Dashboard document selection broken** - Selecting document doesn't populate text area
-47. **Results display never clears** - Old results persist when starting new analysis
-48. **No loading indicators** - App appears frozen during long operations
+**Improvements:**
+1. Create `nlp/clustering.py`:
+```python
+from typing import List, Dict, Any
+from sklearn.cluster import KMeans
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
-## **Project Management - DATA LOSS**
+class ThematicClusterer:
+    def __init__(self):
+        try:
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        except:
+            self.model = None
+    
+    async def cluster_documents(self, documents: List[str], n_clusters: int = 5):
+        if not self.model:
+            return []
+        
+        embeddings = self.model.encode(documents)
+        kmeans = KMeans(n_clusters=min(n_clusters, len(documents)))
+        labels = kmeans.fit_predict(embeddings)
+        
+        clusters = []
+        for i in range(n_clusters):
+            cluster_docs = [doc for j, doc in enumerate(documents) if labels[j] == i]
+            clusters.append({
+                "cluster_id": i,
+                "document_count": len(cluster_docs),
+                "documents": cluster_docs[:5]  # Top 5 docs
+            })
+        
+        return clusters
+```
 
-49. **No project deletion endpoint** - Projects can be created but never removed
-50. **Documents orphaned if project deleted** - No cascading delete of documents when project removed
-51. **Tags feature not implemented** - UI accepts tags but they're never used/displayed
-52. **Project update not implemented** - Can't change project name/description after creation
+2. Update `services/analysis_service.py` to use clustering.
+3. Update backend endpoint to actually run clustering analysis.
 
-## **Configuration Errors - WON'T START**
+**Files:**
+- `nlp/clustering.py` (create new file)
+- `services/analysis_service.py` (add clustering method)
+- `api_server.py` (update `/analyze/thematic-clustering` endpoint)
 
-54. **spaCy download blocks startup** - Server waits minutes while downloading model on first run
-55. **No check for required environment variables** - Server starts with missing config then crashes on first request
-56. **Port 8000 might be in use** - No fallback port or error message
+---
 
-## **Data Processing Bugs - WRONG RESULTS**
+## **Issue 5: Project Management - Update and Delete**
+**Description:** The backend has models for projects but no endpoints to update or delete projects. The frontend doesn't have UI for these operations either, but they should exist for complete CRUD functionality.
 
-57. **Entity extraction duplicates** - spaCy and transformers both extract same entities, creates duplicates
-58. **Relationship extraction only uses ROOT verbs** - Misses most relationships in complex sentences
-59. **Topic extraction returns noun phrases** - Calls them "topics" but they're just random noun chunks
-60. **Summarization truncates mid-sentence** - Summary can end with "The researcher was..." (incomplete)
-61. **Cosine similarity calculation fails** - If vectors different lengths, returns 0.0 without error
+**Improvements:**
+1. Add endpoints in `api_server.py`:
+```python
+@app.put("/projects/{project_id}")
+async def update_project(project_id: str, data: dict):
+    project = await ResearchProject.get(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project.name = data.get("name", project.name)
+    project.description = data.get("description", project.description)
+    project.tags = data.get("tags", project.tags)
+    project.updated_at = datetime.utcnow()
+    await project.save()
+    return project
 
-## **Memory/Resource Issues - WILL CRASH**
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    project = await ResearchProject.get(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Delete all documents in project
+    await DocumentAnalysis.find(DocumentAnalysis.project_id == project_id).delete()
+    await project.delete()
+    return {"message": "Project deleted successfully"}
+```
 
-64. **Vector calculations not optimized** - O(n) similarity search on 10k documents takes minutes
-65. **No pagination on document list** - Loading project with many documents times out
+2. Create frontend UI components for project management.
 
-## **File Type Handling - WON'T PROCESS**
+**Files:**
+- `api_server.py` (add endpoints)
+- `docanalysis-frontend/src/components/` (create ProjectManagement.js)
+- `docanalysis-frontend/src/services/apiService.js` (add methods)
 
-66. **XML extraction strips all tags** - Loses structure information completely
-67. **PDF extraction fails on scanned PDFs** - Returns empty string with no OCR
-68. **DOCX tables ignored** - Table content is lost during extraction
-69. **HTML parsing removes math equations** - MathML content disappears
-70. **Character encoding not detected** - Non-UTF8 files display as gibberish
+---
 
-## **Job Status Tracking - LOST JOBS**
+## **Issue 6: Annotation Management**
+**Description:** The backend has complete annotation models and endpoints (`POST /annotations`, `GET /documents/{document_id}/annotations`). However, there's **no frontend UI** to create or view annotations. The DocumentAnalysis component doesn't have annotation functionality.
 
-71. **Job progress never updates** - Shows "queued" then "completed" with nothing between
-72. **No error messages in jobs** - Failed jobs just show `status: "failed"` with no reason
-73. **Completed jobs never expire** - Database fills with old job records
+**Improvements:**
+1. Create `docanalysis-frontend/src/components/AnnotationViewer.js`:
+```javascript
+import React, { useState, useEffect } from 'react';
+import apiService from '../services/apiService';
 
-## **Validation Missing - BAD DATA**
+const AnnotationViewer = ({ documentId }) => {
+  const [annotations, setAnnotations] = useState([]);
+  const [selection, setSelection] = useState(null);
+  
+  useEffect(() => {
+    loadAnnotations();
+  }, [documentId]);
+  
+  const loadAnnotations = async () => {
+    const result = await apiService.getDocumentAnnotations(documentId);
+    setAnnotations(result);
+  };
+  
+  const createAnnotation = async (text, start, end, type) => {
+    await apiService.createAnnotation({
+      document_id: documentId,
+      text, start_pos: start, end_pos: end,
+      annotation_type: type, tags: []
+    });
+    loadAnnotations();
+  };
+  
+  return (
+    // UI implementation
+  );
+};
+```
 
-75. **No file size check** - Claims 50MB limit but doesn't enforce it
-76. **Project name can be empty string** - Creates unnamed projects
-77. **Query can be empty** - Paper fetch with empty query crashes
+2. Add methods to `apiService.js`:
+```javascript
+async getDocumentAnnotations(documentId) {
+  return await api.get(`/documents/${documentId}/annotations`);
+},
 
-## **State Management Issues - INCONSISTENT UI**
+async createAnnotation(data) {
+  return await api.post('/annotations', data);
+},
+```
 
-80. **Login state not shared** - Some components think user is logged in, others don't
-81. **Project selection not persisted** - Refresh page loses selected project
-82. **Analysis results disappear** - Navigating away loses results, no way to retrieve
-83. **Upload progress not shown** - Large uploads appear frozen
+**Files:**
+- `docanalysis-frontend/src/components/AnnotationViewer.js` (create new)
+- `docanalysis-frontend/src/components/DocumentAnalysis.js` (integrate annotations)
+- `docanalysis-frontend/src/services/apiService.js` (add methods)
 
-## **Critical Path Failures**
+---
 
-84. **Cannot register without SMTP** - If email validation were enabled, registration would fail
-85. **Cannot analyze without models** - If spaCy/transformers fail to load, analysis just returns empty results
-86. **Cannot search without embeddings** - Semantic search silently returns nothing if embeddings fail
+## **Issue 7: Semantic Search**
+**Description:** The backend has `/search/semantic` endpoint and complete implementation in `services/document_service.py` with vector similarity calculations. The frontend DocumentAnalysis component has a search interface but only calls a mock function. It's not integrated with the backend semantic search.
 
-## **Data Consistency Bugs**
+**Improvements:**
+1. Update `DocumentAnalysis.js` to call the backend:
+```javascript
+const handleSemanticSearch = async () => {
+  if (!searchQuery || !selectedProject) return;
+  
+  try {
+    const results = await apiService.semanticSearch(selectedProject, searchQuery);
+    setAnalysisResults(prev => ({
+      ...prev,
+      semanticResults: results.results
+    }));
+  } catch (error) {
+    console.error('Semantic search failed:', error);
+  }
+};
+```
 
-89. **Vector mismatch** - Documents analyzed at different times have different vector dimensions
-90. **Entity positions wrong** - Character positions don't account for text cleaning/truncation
-91. **Relationship sentences missing** - Relationships stored without source sentence for verification
+2. Ensure `apiService.js` has the method (it already does, but verify the endpoint path):
+```javascript
+async semanticSearch(projectId, query, limit = 10) {
+  return await api.post('/search/semantic', {
+    project_id: projectId,
+    query,
+    limit
+  });
+},
+```
 
-## **Integration Failures**
+**Files:**
+- `docanalysis-frontend/src/components/DocumentAnalysis.js` (update search implementation)
+- `docanalysis-frontend/src/services/apiService.js` (verify endpoint)
 
-92. **pygetpapers output format assumed** - If pygetpapers changes output structure, parsing fails
-93. **spaCy version mismatch** - Code assumes spaCy 3.x but requirements allow any version
-94. **Transformers models deprecated** - Hardcoded model names may be removed from Hugging Face
-95. **MongoDB driver compatibility** - motor and beanie versions may conflict
+---
 
-## **User Workflow Blockers**
+## **Issue 8: Analysis Job Progress Tracking**
+**Description:** The backend has a complete job tracking system with progress updates (`/jobs/{job_id}`). The frontend has code in some places that checks job status, but there's no real-time progress indicator or polling mechanism in the main UI components.
 
-96. **Cannot retry failed analysis** - No UI button to rerun analysis on failed documents
-97. **Cannot delete uploaded documents** - Documents persist forever
-98. **Cannot view analysis history** - No way to see what analyses were run when
-99. **Cannot export results** - No CSV/JSON download of entities/relationships
+**Improvements:**
+1. Create `docanalysis-frontend/src/components/JobProgressTracker.js`:
+```javascript
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import apiService from '../services/apiService';
+
+const JobProgressTracker = ({ jobId, onComplete }) => {
+  const [job, setJob] = useState(null);
+  
+  useEffect(() => {
+    if (!jobId) return;
+    
+    const interval = setInterval(async () => {
+      const status = await apiService.getJobStatus(jobId);
+      setJob(status);
+      
+      if (status.status === 'completed' || status.status === 'failed') {
+        clearInterval(interval);
+        if (onComplete) onComplete(status);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    return () => clearInterval(interval);
+  }, [jobId]);
+  
+  return (
+    <div className="bg-white p-4 rounded-lg">
+      <h3>Analysis Progress</h3>
+      <div className="w-full bg-gray-200 rounded-full h-4">
+        <motion.div 
+          className="bg-blue-600 h-4 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${job?.progress || 0}%` }}
+        />
+      </div>
+      <p className="mt-2">{job?.status} - {job?.progress}%</p>
+      {job?.error && <p className="text-red-600">{job.error}</p>}
+    </div>
+  );
+};
+```
+
+2. Integrate into main analysis workflows.
+
+**Files:**
+- `docanalysis-frontend/src/components/JobProgressTracker.js` (create new)
+- `docanalysis-frontend/src/components/DocumentAnalysis.js` (integrate)
+- `docanalysis-frontend/src/components/Dashboard.js` (integrate)
+
+---
+
+## **Issue 9: Paper Content Preview**
+**Description:** The `apiService.js` has a method `getPaperContent(pmcid, project_name)` that calls `/papers/${pmcid}`, but this endpoint **doesn't exist** in the backend. Users can fetch papers but can't preview individual paper content.
+
+**Improvements:**
+1. Add endpoint in `api_server.py`:
+```python
+@app.get("/papers/{pmcid}")
+async def get_paper_content(pmcid: str, project_name: Optional[str] = None):
+    # Search for document by PMCID in metadata
+    document = await DocumentAnalysis.find_one({
+        "metadata.pmcid": pmcid
+    })
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    
+    return {
+        "pmcid": pmcid,
+        "content": document.content,
+        "title": document.metadata.get("title", ""),
+        "summary": document.summary,
+        "entities": document.entities,
+        "topics": document.topics
+    }
+```
+
+2. Create a paper viewer component in the frontend.
+
+**Files:**
+- `api_server.py` (add endpoint)
+- `docanalysis-frontend/src/components/PaperViewer.js` (create new)
+
+---
+
+## **Issue 10: Existing Papers Management**
+**Description:** The `apiService.js` has `getExistingPapers()` method calling `/projects/papers`, but this endpoint **doesn't exist**. There's no way to browse previously fetched papers across projects.
+
+**Improvements:**
+1. Add endpoint in `api_server.py`:
+```python
+@app.get("/projects/papers")
+async def get_all_papers():
+    papers = await DocumentAnalysis.find({
+        "file_type": "xml",
+        "metadata.source": "pygetpapers"
+    }).to_list()
+    
+    return {
+        "papers": [
+            {
+                "id": str(p.id),
+                "pmcid": p.metadata.get("pmcid"),
+                "title": p.original_filename,
+                "project_id": p.project_id,
+                "analyzed": p.analyzed
+            }
+            for p in papers
+        ]
+    }
+```
+
+**Files:**
+- `api_server.py` (add endpoint)
+- `docanalysis-frontend/src/components/` (create PaperLibrary.js)
+
+---
+
+## **Issue 11: Entity/Section Filtering**
+**Description:** The backend `/entities` endpoint returns all entities, and `/sections` endpoint returns mock data. The frontend has no UI to filter entities by type, section, or document. The `/sections` endpoint should return actual document sections.
+
+**Improvements:**
+1. Update `/entities` endpoint to support filtering:
+```python
+@app.get("/entities")
+async def get_entities(
+    entity_type: Optional[str] = None,
+    document_id: Optional[str] = None,
+    project_id: Optional[str] = None
+):
+    query = {}
+    if document_id:
+        query["_id"] = document_id
+    elif project_id:
+        query["project_id"] = project_id
+    
+    documents = await DocumentAnalysis.find(query).to_list()
+    
+    all_entities = []
+    for doc in documents:
+        for entity in doc.entities:
+            if entity_type and entity.get("label") != entity_type:
+                continue
+            all_entities.append({
+                **entity,
+                "document_id": str(doc.id),
+                "document_name": doc.original_filename
+            })
+    
+    return {"entities": all_entities}
+```
+
+2. Create entity filter UI component.
+
+**Files:**
+- `api_server.py` (update `/entities` endpoint)
+- `docanalysis-frontend/src/components/EntityExplorer.js` (create new)
+
+---
+
+## **Issue 12: Download/Export Functionality**
+**Description:** The `apiService.js` has `downloadResults(jobId, filename)` method, but the backend `/download/{job_id}/{filename}` endpoint **doesn't exist**. Users can't export analysis results as CSV or JSON.
+
+**Improvements:**
+1. Add endpoints in `api_server.py`:
+```python
+@app.get("/download/{job_id}/results.csv")
+async def download_results_csv(job_id: str):
+    job = await AnalysisJob.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Get all documents in the project
+    docs = await DocumentAnalysis.find({
+        "project_id": job.project_id
+    }).to_list()
+    
+    # Generate CSV
+    import csv
+    from io import StringIO
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Document", "Entity", "Type", "Position"])
+    
+    for doc in docs:
+        for entity in doc.entities:
+            writer.writerow([
+                doc.original_filename,
+                entity.get("text"),
+                entity.get("label"),
+                f"{entity.get('start')}-{entity.get('end')}"
+            ])
+    
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=results_{job_id}.csv"}
+    )
+
+@app.get("/download/{job_id}/results.json")
+async def download_results_json(job_id: str):
+    # Similar implementation for JSON
+    pass
+```
+
+**Files:**
+- `api_server.py` (add endpoints)
+- `docanalysis-frontend/src/components/Dashboard.js` (add download buttons)
+
+---
+
+## **Issue 13: Authentication System**
+**Description:** The backend has complete auth infrastructure (`services/auth_service.py`, JWT tokens, user models) with `/auth/register` and `/auth/login` endpoints, but the frontend `Login.js` component **completely bypasses authentication** - it just sets a dummy token and immediately calls `onLogin()`. The authentication system is disabled.
+
+**Improvements:**
+1. Restore full authentication in `Login.js`:
+```javascript
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  try {
+    const endpoint = isLogin ? '/auth/login' : '/auth/register';
+    const response = await axios.post(`http://localhost:8000${endpoint}`, {
+      username,
+      email: isLogin ? undefined : email,
+      password
+    });
+    
+    localStorage.setItem('access_token', response.data.access_token);
+    if (onLogin) onLogin();
+  } catch (error) {
+    setError(error.response?.data?.detail || 'Authentication failed');
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+2. Add auth interceptor to `apiService.js`:
+```javascript
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+```
+
+3. Add protected route wrapper.
+
+**Files:**
+- `docanalysis-frontend/src/components/Login.js` (restore authentication)
+- `docanalysis-frontend/src/services/apiService.js` (add auth interceptor)
+- `docanalysis-frontend/src/App.js` (add route protection)
+
+---
+
+## **Issue 14: File Upload Progress**
+**Description:** The backend accepts file uploads via `/projects/{project_id}/upload`, but there's no upload progress indication in the frontend. Large file uploads appear frozen.
+
+**Improvements:**
+1. Update upload implementation in components to track progress:
+```javascript
+const handleFileUpload = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/projects/${projectId}/upload`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(percentCompleted);
+        }
+      }
+    );
+    // Handle response
+  } catch (error) {
+    console.error('Upload failed:', error);
+  }
+};
+```
+
+2. Add progress bar UI component.
+
+**Files:**
+- `docanalysis-frontend/src/components/FileUploadComponent.js` (create new)
+- `docanalysis-frontend/src/components/DocumentAnalysis.js` (integrate)
+
+---
+
+## **Issue 15: Results Visualization**
+**Description:** The backend returns rich analysis data (entities, relationships, topics, summaries), but the frontend displays them in very basic text format. There's no graph visualization for relationships, no entity frequency charts, no topic clusters visualization.
+
+**Improvements:**
+1. Install visualization libraries in frontend:
+```bash
+npm install recharts d3 react-force-graph-2d
+```
+
+2. Create visualization components:
+   - `EntityChart.js` - Bar chart of entity frequencies
+   - `RelationshipGraph.js` - Network graph of relationships
+   - `TopicCloud.js` - Word cloud or bubble chart for topics
+
+3. Integrate into DocumentAnalysis and Dashboard components.
+
+**Files:**
+- `docanalysis-frontend/package.json` (add dependencies)
+- `docanalysis-frontend/src/components/visualizations/` (create new folder with components)
+- `docanalysis-frontend/src/components/DocumentAnalysis.js` (integrate visualizations)
+
+---
+
+## **Issue 16: Navigation and Routing**
+**Description:** The frontend has a `Navigation.js` component with view states ('home', 'dashboard', 'docs', 'settings'), but there's no actual routing implementation. The app doesn't use react-router properly - DocumentAnalysis just uses basic state management.
+
+**Improvements:**
+1. Update `App.js` to use proper routing:
+```javascript
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Home from './components/Home';
+import Dashboard from './components/Dashboard';
+import DocumentAnalysis from './components/DocumentAnalysis';
+import CustomDictionary from './components/CustomDictionary';
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/analysis" element={<DocumentAnalysis />} />
+        <Route path="/dictionaries" element={<CustomDictionary />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+2. Update Navigation component to use proper Link components.
+
+**Files:**
+- `docanalysis-frontend/src/App.js` (implement routing)
+- `docanalysis-frontend/src/components/Navigation.js` (use Link instead of buttons)
+- `docanalysis-frontend/src/components/Home.js` (create proper home page)
+
+---
+
+## **Issue 17: Error Handling and User Feedback**
+**Description:** Most frontend components have minimal error handling. Failed API calls often just log to console without showing user-friendly error messages. There's no global error boundary or notification system.
+
+**Improvements:**
+1. Create `ErrorBoundary.js` component.
+2. Create `NotificationContext.js` for global notifications.
+3. Wrap components with error handling.
+4. Add error display UI to all forms and API calls.
+
+**Files:**
+- `docanalysis-frontend/src/components/ErrorBoundary.js` (create new)
+- `docanalysis-frontend/src/contexts/NotificationContext.js` (create new)
+- All component files (add error handling)
+
+---
+
+## **Issue 18: Responsive Design**
+**Description:** The frontend uses Tailwind CSS but many components aren't properly responsive. The Dashboard and DocumentAnalysis components have layout issues on mobile devices.
+
+**Improvements:**
+1. Audit all components for mobile responsiveness.
+2. Add proper Tailwind responsive classes (`sm:`, `md:`, `lg:`).
+3. Test on different screen sizes.
+
+**Files:**
+- All component files in `docanalysis-frontend/src/components/`
+
+---
+
+## **Issue 19: Loading States**
+**Description:** Many components fetch data but don't show loading spinners or skeletons. Users see blank screens while data loads.
+
+**Improvements:**
+1. Create reusable `LoadingSpinner.js` and `SkeletonLoader.js` components.
+2. Add loading states to all data-fetching components.
+
+**Files:**
+- `docanalysis-frontend/src/components/LoadingSpinner.js` (create new)
+- `docanalysis-frontend/src/components/SkeletonLoader.js` (create new)
+- All component files that fetch data
+
+---
+
+## **Issue 20: API Base URL Configuration**
+**Description:** The `apiService.js` has `API_BASE_URL` hardcoded to `http://localhost:8000`. This won't work in production or when backend runs on different port/domain.
+
+**Improvements:**
+1. Create environment variable configuration:
+```javascript
+// .env file
+REACT_APP_API_BASE_URL=http://localhost:8000
+
+// apiService.js
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+```
+
+2. Add instructions in README for configuration.
+
+**Files:**
+- `docanalysis-frontend/.env` (create new)
+- `docanalysis-frontend/src/services/apiService.js` (use env variable)
+- `README.md` (add configuration instructions)
+
+---
+
+This comprehensive list covers all major gaps between backend functionality and frontend implementation in the project.

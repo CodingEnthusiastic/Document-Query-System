@@ -6,6 +6,7 @@ from nlp.relationship_extractor import RelationshipExtractor
 from nlp.topic_modeler import TopicModeler
 from nlp.summarizer import Summarizer
 import asyncio
+import numpy as np
 from typing import List, Dict, Any
 
 class AnalysisService:
@@ -71,6 +72,20 @@ class AnalysisService:
             await job.save()
             raise e
 
+    def _convert_numpy_types(self, data):
+        """Convert numpy types to Python native types recursively"""
+        if isinstance(data, np.integer):
+            return int(data)
+        elif isinstance(data, np.floating):
+            return float(data)
+        elif isinstance(data, np.ndarray):
+            return data.tolist()
+        elif isinstance(data, dict):
+            return {key: self._convert_numpy_types(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._convert_numpy_types(item) for item in data]
+        return data
+
     async def _analyze_single_document(self, document: DocumentAnalysis):
         """Analyze a single document"""
         if document.analyzed:
@@ -81,16 +96,19 @@ class AnalysisService:
             entities = []
             if self.entity_extractor:
                 entities = await self.entity_extractor.extract_entities(document.content)
+                entities = self._convert_numpy_types(entities)
             
             # Extract relationships
             relationships = []
             if self.relationship_extractor:
                 relationships = await self.relationship_extractor.extract_relationships(document.content)
+                relationships = self._convert_numpy_types(relationships)
             
             # Extract topics
             topics = []
             if self.topic_modeler:
                 topics = await self.topic_modeler.extract_topics(document.content)
+                topics = self._convert_numpy_types(topics)
             
             # Generate summary
             summary = ""
@@ -106,7 +124,9 @@ class AnalysisService:
             await document.save()
             
         except Exception as e:
-            print(f"Error analyzing document {document.id}: {str(e)}")
+            print(f"Error analyzing document {document.id}: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def _run_cross_document_analysis(self, project_id: str):
         """Run analysis across all documents in a project"""
@@ -125,11 +145,13 @@ class AnalysisService:
         common_entities = []
         if self.entity_extractor:
             common_entities = await self.entity_extractor.extract_entities(all_content)
+            common_entities = self._convert_numpy_types(common_entities)
         
         # Extract cross-document relationships
         cross_doc_relationships = []
         if self.relationship_extractor:
             cross_doc_relationships = await self.relationship_extractor.extract_cross_document_relationships(documents)
+            cross_doc_relationships = self._convert_numpy_types(cross_doc_relationships)
         
         # Generate project summary
         project_summary = ""

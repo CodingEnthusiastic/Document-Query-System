@@ -112,13 +112,73 @@ const apiService = {
   },
 
   // ✅ Get list of documents
+  // ✅ Get list of documents - ROBUST VERSION
   async getDocuments(projectId) {
-    return await api.get(`/projects/${projectId}/documents`);
+    try {
+      const response = await api.get(`/projects/${projectId}/documents`);
+      console.log('API Service - Raw response:', response);
+      
+      // Handle different possible response structures
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response.documents && Array.isArray(response.documents)) {
+        return response.documents;
+      } else if (response.data && Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data && response.data.documents && Array.isArray(response.data.documents)) {
+        return response.data.documents;
+      }
+      
+      console.warn('API Service - Unexpected response structure:', response);
+      return [];
+    } catch (error) {
+      console.error('API Service - Error fetching documents:', error);
+      throw error;
+    }
   },
 
   // ✅ Get text content from a document
   async getDocumentText(documentId) {
     return await api.get(`/documents/${encodeURIComponent(documentId)}/text`);
+  },
+
+  // ✅ Dictionary management
+  async validateDictionary(data) {
+    return await api.post('/dictionaries/validate', data);
+  },
+
+  async createCustomDictionary(data) {
+    return await api.post('/dictionaries/create', data);
+  },
+
+  // ✅ Semantic search
+  async semanticSearch(projectId, query, limit = 10) {
+    return await api.post('/search/semantic', {
+      project_id: projectId,
+      query,
+      limit
+    });
+  },
+
+  // ✅ Project management
+  async getProjects() {
+    return await api.get('/projects');
+  },
+
+  async createProject(data) {
+    return await api.post('/projects', data);
+  },
+
+  async getProject(projectId) {
+    return await api.get(`/projects/${projectId}`);
+  },
+
+  async deleteProject(projectId) {
+    return await api.delete(`/projects/${projectId}`);
+  },
+
+  async deleteDocument(documentId) {
+    return await api.delete(`/documents/${documentId}`);
   },
 };
 
