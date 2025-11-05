@@ -1,4 +1,8 @@
-# Modern Document Analysis System
+## docanalysis 
+`docanalysis` is a Command Line Tool that ingests corpora and carries out text-analysis of documents, including
+- sectioning
+- NLP/text-mining
+- dictionary generation 
 
 A comprehensive, modern document analysis platform with advanced NLP capabilities, semantic search, and MongoDB-powered storage. This system replaces the legacy document query system with modern architecture and enhanced functionality.
 
