@@ -1,11 +1,11 @@
 from typing import List, Dict, Any
-import spacy
-from transformers import pipeline
+# # import spacy  # Temporarily disabled  # Temporarily disabled
+# from transformers import pipeline  # Temporarily disabled
 import torch
 
 class RelationshipExtractor:
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm") if "en_core_web_sm" in spacy.util.get_installed_models() else None
+        self.nlp = None  # spacy temporarily disabled
 
     async def extract_relationships(self, text: str) -> List[Dict[str, Any]]:
         """Extract relationships between entities using dependency parsing"""

@@ -4,12 +4,14 @@ import numpy as np
 class VectorStore:
     def __init__(self):
         # Initialize sentence transformer model for embeddings
-        try:
-            from sentence_transformers import SentenceTransformer
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-        except ImportError:
-            print("Sentence transformers not available. Semantic search will be disabled.")
-            self.model = None
+        # try:
+        #     from sentence_transformers import SentenceTransformer
+        #     self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        # except ImportError:
+        #     print("Sentence transformers not available. Semantic search will be disabled.")
+        #     self.model = None
+        self.model = None  # Temporarily disabled
+        print("Sentence transformers temporarily disabled. Semantic search will be disabled.")
     
     async def get_embedding(self, text: str) -> List[float]:
         """Generate embedding for a text using sentence transformer"""

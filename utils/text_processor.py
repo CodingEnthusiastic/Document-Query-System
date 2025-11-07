@@ -1,4 +1,4 @@
-import spacy
+# import spacy  # Temporarily disabled due to pydantic compatibility issue
 from typing import List, Dict, Any
 import re
 from bs4 import BeautifulSoup  # Add this import
@@ -7,15 +7,16 @@ class TextProcessor:
     """Handles text processing, cleaning, and NLP tasks"""
     
     def __init__(self):
-        # Initialize spaCy model if available
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            print("spaCy model not found. Please install with: python -m spacy download en_core_web_sm")
-            self.nlp = None
-        except Exception as e:
-            print(f"Error loading spaCy model: {e}")
-            self.nlp = None
+        # Initialize spaCy model if available (temporarily disabled)
+        # try:
+        #     self.nlp = spacy.load("en_core_web_sm")
+        # except OSError:
+        #     print("spaCy model not found. Please install with: python -m spacy download en_core_web_sm")
+        #     self.nlp = None
+        # except Exception as e:
+        #     print(f"Error loading spaCy model: {e}")
+        #     self.nlp = None
+        self.nlp = None  # Temporarily disabled
     
     def extract_entities(self, text: str) -> List[Dict[str, Any]]:
         """Extract entities from text using spaCy"""

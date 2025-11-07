@@ -14,15 +14,16 @@ def install_dependencies():
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
 def setup_spacy_model():
-    """Download required spaCy model"""
+    """Download required spaCy model (temporarily disabled)"""
     print("Setting up spaCy model...")
-    try:
-        import spacy
-        spacy.load("en_core_web_sm")
-        print("spaCy model already installed")
-    except OSError:
-        print("Downloading spaCy model...")
-        subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    # try:
+    #     import spacy
+    #     spacy.load("en_core_web_sm")
+    #     print("spaCy model already installed")
+    # except OSError:
+    #     print("Downloading spaCy model...")
+    #     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    print("spaCy temporarily disabled due to compatibility issues")
 
 def start_api_server():
     """Start the API server"""
