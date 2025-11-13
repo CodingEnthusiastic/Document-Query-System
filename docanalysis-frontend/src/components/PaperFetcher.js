@@ -80,53 +80,57 @@ const PaperFetcher = ({ projectId, onFetchComplete }) => {
         Fetch Research Papers
       </h3>
       
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Search Query
-          </label>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="e.g., machine learning, climate change, medical research..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Number of Papers
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={numPapers}
-            onChange={(e) => setNumPapers(Number(e.target.value))}
-            placeholder="e.g., 10"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        
-        <div className="flex items-end">
-          <button
-            onClick={fetchPapers}
-            disabled={isFetching}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isFetching ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Fetching...
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4" />
-                Fetch Papers
-              </>
-            )}
-          </button>
+      <div className="space-y-4 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className="lg:col-span-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Search Query
+            </label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="e.g., machine learning, climate change..."
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 transition-all duration-200 hover:border-gray-400 bg-white shadow-sm"
+            />
+          </div>
+          
+          <div className="lg:col-span-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Number of Papers
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={numPapers}
+              onChange={(e) => setNumPapers(Number(e.target.value))}
+              placeholder="10"
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 transition-all duration-200 hover:border-gray-400 bg-white shadow-sm text-center"
+            />
+          </div>
+          
+          <div className="lg:col-span-3 flex items-end">
+            <button
+              onClick={fetchPapers}
+              disabled={isFetching}
+              className="w-full bg-blue-600 text-white px-4 py-3 text-base font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md min-h-[48px]"
+            >
+              {isFetching ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span className="hidden sm:inline">Fetching Papers...</span>
+                  <span className="sm:hidden">Fetching...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  <span className="hidden sm:inline">Fetch Papers</span>
+                  <span className="sm:hidden">Fetch</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
