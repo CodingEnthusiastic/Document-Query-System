@@ -114,33 +114,64 @@ const Dashboard = () => {
   }, []);
 
   // Extract text from uploaded file
-  const extractTextFromFile = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  const extractTextFromFile = async (file) => {
+    const fileName = file.name.toLowerCase();
+    const fileType = file.type.toLowerCase();
+    
+    // Handle text files directly in browser
+    if (fileType === 'text/plain' || fileName.endsWith('.txt') || 
+        fileType === 'application/json' || fileName.endsWith('.json') ||
+        fileType === 'text/csv' || fileName.endsWith('.csv')) {
       
-      reader.onload = (e) => {
-        try {
-          const text = e.target.result;
-          resolve(text);
-        } catch (error) {
-          reject(error);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+          try {
+            resolve(e.target.result);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        reader.onerror = () => {
+          reject(new Error('Failed to read text file'));
+        };
+        
+        reader.readAsText(file);
+      });
+    }
+    
+    // Handle binary files (PDF, DOC, DOCX) via backend API
+    else if (fileName.endsWith('.pdf') || fileName.endsWith('.doc') || fileName.endsWith('.docx') ||
+             fileType.includes('pdf') || fileType.includes('msword') || fileType.includes('wordprocessingml')) {
+      
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('http://localhost:8000/extract-text', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to extract text: ${response.statusText}`);
         }
-      };
-      
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-      
-      // Handle different file types
-      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        reader.readAsText(file);
-      } else if (file.type === 'application/json' || file.name.endsWith('.json')) {
-        reader.readAsText(file);
-      } else {
-        // For other files, try to read as text
-        reader.readAsText(file);
+        
+        const result = await response.json();
+        return result.text || 'No text could be extracted from this file.';
+        
+      } catch (error) {
+        console.error('Backend text extraction failed:', error);
+        throw new Error(`Could not extract text from ${file.name}. This file type may not be supported or the file may be corrupted.`);
       }
-    });
+    }
+    
+    // Fallback for unknown file types
+    else {
+      throw new Error(`Unsupported file type: ${file.name}. Please upload TXT, PDF, DOC, DOCX, JSON, or CSV files.`);
+    }
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

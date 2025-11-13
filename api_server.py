@@ -25,6 +25,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import re
+import io
 
 # Import models
 from models.user import User
@@ -392,6 +393,112 @@ async def upload_document_auto(
     except Exception as e:
         logger.error(f"Upload document error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/extract-text")
+@limiter.limit("20/minute")
+async def extract_text_from_file(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    """Extract text from uploaded file without saving it"""
+    try:
+        # Validate file type
+        allowed_extensions = {'.pdf', '.docx', '.doc', '.txt', '.xml', '.html', '.csv', '.json'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {allowed_extensions}")
+        
+        # Check file size (limit to 10MB for text extraction)
+        if file.size and file.size > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size: 10MB")
+        
+        # Read file content
+        content = await file.read()
+        
+        # Extract text based on file type
+        extracted_text = ""
+        
+        if file_ext in {'.txt', '.csv', '.json', '.xml', '.html'}:
+            # Handle text files directly
+            try:
+                extracted_text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    extracted_text = content.decode('latin-1')
+                except:
+                    extracted_text = content.decode('utf-8', errors='ignore')
+        
+        elif file_ext == '.pdf':
+            # Handle PDF files
+            try:
+                import PyPDF2
+                import io
+                
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+                text_parts = []
+                
+                for page in pdf_reader.pages:
+                    text_parts.append(page.extract_text())
+                
+                extracted_text = "\n".join(text_parts)
+                
+                if not extracted_text.strip():
+                    extracted_text = "No text could be extracted from this PDF. It may contain only images or be password protected."
+                    
+            except ImportError:
+                raise HTTPException(status_code=500, detail="PDF processing not available. PyPDF2 not installed.")
+            except Exception as e:
+                logger.error(f"PDF extraction error: {e}")
+                extracted_text = f"Error extracting text from PDF: {str(e)}"
+        
+        elif file_ext in {'.docx', '.doc'}:
+            # Handle Word documents
+            try:
+                if file_ext == '.docx':
+                    import docx
+                    import io
+                    
+                    doc = docx.Document(io.BytesIO(content))
+                    text_parts = []
+                    
+                    for paragraph in doc.paragraphs:
+                        text_parts.append(paragraph.text)
+                    
+                    extracted_text = "\n".join(text_parts)
+                else:
+                    # .doc files are more complex, provide fallback message
+                    extracted_text = "Legacy .doc files are not fully supported. Please save as .docx or copy/paste the text manually."
+                    
+            except ImportError:
+                raise HTTPException(status_code=500, detail="Word document processing not available. python-docx not installed.")
+            except Exception as e:
+                logger.error(f"Word document extraction error: {e}")
+                extracted_text = f"Error extracting text from Word document: {str(e)}"
+        
+        # Clean up the extracted text
+        if extracted_text:
+            # Remove excessive whitespace and normalize line breaks
+            extracted_text = re.sub(r'\n\s*\n', '\n\n', extracted_text)
+            extracted_text = re.sub(r'[ \t]+', ' ', extracted_text)
+            extracted_text = extracted_text.strip()
+        
+        if not extracted_text:
+            extracted_text = "No text could be extracted from this file."
+        
+        return {
+            "filename": file.filename,
+            "file_type": file_ext,
+            "file_size": file.size,
+            "text": extracted_text,
+            "character_count": len(extracted_text),
+            "word_count": len(extracted_text.split()) if extracted_text else 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Text extraction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
 
 # ==================== ANALYSIS ENDPOINTS ====================
 

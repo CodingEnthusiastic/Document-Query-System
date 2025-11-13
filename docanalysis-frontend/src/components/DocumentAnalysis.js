@@ -242,111 +242,344 @@ const DocumentAnalysis = () => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${doc.original_filename} - Research Paper</title>
+        <title>${doc.original_filename || doc.title} - Research Paper</title>
         <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400&amp;family=Roboto:wght@400;700&amp;display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap');
+
+          * {
+            box-sizing: border-box;
+          }
 
           body {
-            font-family: 'Lora', serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #fdfdfd;
+            font-family: 'Crimson Text', serif;
+            line-height: 1.8;
+            color: #2d3748;
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
             margin: 0;
-            padding: 0;
+            padding: 20px;
+            font-size: 18px;
+            min-height: 100vh;
           }
 
-          .container {
-            max-width: 800px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          .research-paper {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            position: relative;
+            min-height: calc(100vh - 40px);
           }
 
-          h1, h2, h3, h4, h5, h6 {
-            font-family: 'Roboto', sans-serif;
-            font-weight: 700;
-            margin-top: 1.5em;
-            margin-bottom: 0.5em;
-            color: #2c3e50;
-          }
-
-          h1 {
-            font-size: 2.2em;
+          .paper-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem 2rem;
             text-align: center;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 0.5em;
-            margin-bottom: 1em;
+            position: relative;
           }
 
-          h2 {
-            font-size: 1.8em;
-            border-bottom: 1px solid #ecf0f1;
-            padding-bottom: 0.3em;
+          .paper-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="0.5" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="0.3" fill="white" opacity="0.05"/><circle cx="50" cy="10" r="0.2" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+          }
+
+          .paper-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0 0 1rem 0;
+            line-height: 1.2;
+            position: relative;
+            z-index: 1;
+          }
+
+          .paper-meta {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+          }
+
+          .paper-content {
+            padding: 3rem;
+          }
+
+          .section-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2d3748;
+            margin: 2.5rem 0 1rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e2e8f0;
+            position: relative;
+          }
+
+          .section-title::before {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          }
+
+          .subsection-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin: 2rem 0 0.75rem 0;
           }
 
           p {
-            margin-bottom: 1em;
+            margin-bottom: 1.5rem;
             text-align: justify;
+            text-indent: 0;
+            line-height: 1.9;
+            font-size: 1.05rem;
+            color: #374151;
+            hyphens: auto;
+            word-spacing: 0.05em;
+          }
+
+          p:first-of-type {
+            text-indent: 0;
+          }
+
+          p + p {
+            text-indent: 2rem;
           }
 
           .abstract {
-            background-color: #ecf0f1;
-            border-left: 5px solid #3498db;
-            padding: 1.5em;
-            margin: 2em 0;
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-left: 5px solid #667eea;
+            padding: 2rem;
+            margin: 2rem 0;
+            border-radius: 0 8px 8px 0;
             font-style: italic;
+            position: relative;
+          }
+
+          .abstract::before {
+            content: '"';
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            font-size: 4rem;
+            color: #667eea;
+            opacity: 0.3;
+            font-family: serif;
           }
           
           .abstract p {
             text-align: left;
+            text-indent: 0;
+            margin-bottom: 1rem;
+            position: relative;
+            z-index: 1;
+          }
+
+          .abstract-title {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #2d3748;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .authors {
             text-align: center;
-            margin-bottom: 2em;
-            font-family: 'Roboto', sans-serif;
-            color: #7f8c8d;
+            margin: 1.5rem 0 2rem;
+            font-family: 'Inter', sans-serif;
+            color: #718096;
+            font-size: 1.1rem;
           }
 
-          .fig {
-            margin: 2em 0;
+          .author-name {
+            font-weight: 500;
+            color: #4a5568;
+          }
+
+          .figure {
+            margin: 2.5rem 0;
             text-align: center;
+            background: #f8f9fa;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
           }
 
-          .fig img {
+          .figure img {
             max-width: 100%;
             height: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 5px;
-            background: white;
+            display: block;
+            margin: 0 auto;
           }
 
-          .fig .caption {
-            margin-top: 0.5em;
-            font-size: 0.9em;
+          .figure-caption {
+            padding: 1rem;
+            font-size: 0.9rem;
             font-style: italic;
-            color: #555;
+            color: #718096;
+            background: #ffffff;
+            border-top: 1px solid #e2e8f0;
+          }
+
+          .table-container {
+            margin: 2rem 0;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
           }
 
           table {
             width: 100%;
             border-collapse: collapse;
-            font-family: 'Roboto', sans-serif;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
           }
 
           th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
+            padding: 0.75rem 1rem;
             text-align: left;
+            border-bottom: 1px solid #e2e8f0;
           }
 
           th {
-            background-color: #f2f2f2;
-            font-weight: 700;
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          tbody tr:hover {
+            background-color: #f8f9fa;
+          }
+
+          .reference-list {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 2px solid #e2e8f0;
+          }
+
+          .reference-item {
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #4a5568;
+            padding-left: 1.5rem;
+            text-indent: -1.5rem;
+          }
+          
+          a {
+            color: #667eea;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: all 0.2s ease;
+          }
+          
+          a:hover {
+            border-bottom-color: #667eea;
+          }
+
+          .equation {
+            margin: 1.5rem 0;
+            text-align: center;
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+          }
+
+          .keywords {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+          }
+
+          .keywords strong {
+            color: #2d3748;
+            font-weight: 600;
+          }
+
+          .keyword-tag {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin: 0.25rem;
+          }
+
+          /* Responsive design */
+          @media (max-width: 768px) {
+            body { padding: 10px; }
+            .paper-content { padding: 1.5rem; }
+            .paper-header { padding: 2rem 1.5rem 1.5rem; }
+            .paper-title { font-size: 2rem; }
+            .section-title { font-size: 1.3rem; }
+          }
+
+          /* Print styles */
+          @media print {
+            body { background: white; padding: 0; }
+            .research-paper { box-shadow: none; }
+            .paper-header { background: white; color: black; }
+            .paper-title { color: black; }
+          }
+
+          /* Image error handling */
+          .image-error {
+            border: 2px dashed #cbd5e0;
+            padding: 2rem;
+            text-align: center;
+            color: #718096;
+            background: #f7fafc;
+            border-radius: 8px;
+            margin: 1rem 0;
+          }
+
+          .loading-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: #718096;
+          }
+
+          .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e2e8f0;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+          }
+
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
 
           .ref-list .ref {
@@ -374,50 +607,218 @@ const DocumentAnalysis = () => {
         </style>
       </head>
       <body>
-        <div class="container">
-          ${htmlContent}
+        <div class="research-paper">
+          <div class="paper-header">
+            <h1 class="paper-title">${doc.title || doc.original_filename || 'Research Paper'}</h1>
+            <div class="paper-meta">
+              ${doc.authors ? `<div class="authors"><span class="author-name">${doc.authors}</span></div>` : ''}
+              ${doc.journal ? `<div>Published in: ${doc.journal}</div>` : ''}
+              ${doc.year ? `<div>Year: ${doc.year}</div>` : ''}
+              ${doc.pmcid ? `<div>PMC ID: ${doc.pmcid}</div>` : ''}
+            </div>
+          </div>
+          <div class="paper-content">
+            <div class="loading-indicator" id="loading">
+              <div class="spinner"></div>
+              Processing document content...
+            </div>
+            <div id="content-container" style="display: none;">
+              ${htmlContent}
+            </div>
+          </div>
         </div>
         
         <script>
-          // Fix image loading with better error handling
+          // Enhanced document processing and formatting
           document.addEventListener('DOMContentLoaded', function() {
-            console.log('🖼️ Fixing images...');
-            const images = document.querySelectorAll('img');
+            console.log('� Processing research paper...');
             
+            // Show content after brief delay for better UX
+            setTimeout(() => {
+              document.getElementById('loading').style.display = 'none';
+              document.getElementById('content-container').style.display = 'block';
+            }, 500);
+            
+            // Enhanced content formatting
+            const contentContainer = document.getElementById('content-container');
+            
+            // First, clean up and structure the content
+            let contentHTML = contentContainer.innerHTML;
+            
+            // Convert XML tags to more readable format
+            contentHTML = contentHTML
+              .replace(/<title[^>]*>(.*?)<\\/title>/gi, '<h1 class="paper-title">$1</h1>')
+              .replace(/<abstract[^>]*>(.*?)<\\/abstract>/gi, '<div class="abstract"><div class="abstract-title">Abstract</div><p>$1</p></div>')
+              .replace(/<sec[^>]*><title[^>]*>(.*?)<\\/title>/gi, '<h2 class="section-title">$1</h2>')
+              .replace(/<\\/sec>/gi, '')
+              .replace(/<p[^>]*>/gi, '<p>')
+              .replace(/<\\/p>/gi, '</p>')
+              .replace(/<italic[^>]*>(.*?)<\\/italic>/gi, '<em>$1</em>')
+              .replace(/<bold[^>]*>(.*?)<\\/bold>/gi, '<strong>$1</strong>')
+              .replace(/<xref[^>]*>(.*?)<\\/xref>/gi, '<a href="#ref">$1</a>')
+              .replace(/<fig[^>]*>/gi, '<div class="figure">')
+              .replace(/<\\/fig>/gi, '</div>')
+              .replace(/<graphic[^>]*href="([^"]*)"[^>]*>/gi, '<img src="$1" alt="Figure" />')
+              .replace(/<table-wrap[^>]*>/gi, '<div class="table-container"><table>')
+              .replace(/<\\/table-wrap>/gi, '</table></div>')
+              .replace(/<tbody[^>]*>/gi, '<tbody>')
+              .replace(/<\\/tbody>/gi, '</tbody>')
+              .replace(/<tr[^>]*>/gi, '<tr>')
+              .replace(/<\\/tr>/gi, '</tr>')
+              .replace(/<td[^>]*>/gi, '<td>')
+              .replace(/<\\/td>/gi, '</td>')
+              .replace(/<th[^>]*>/gi, '<th>')
+              .replace(/<\\/th>/gi, '</th>');
+            
+            // Update content with processed HTML
+            contentContainer.innerHTML = contentHTML;
+            
+            // Format sections and headings
+            const elements = contentContainer.querySelectorAll('*');
+            elements.forEach(element => {
+              const text = element.textContent?.trim() || '';
+              
+              // Identify and format section headings
+              if (text.match(/^(ABSTRACT|INTRODUCTION|METHODS|METHODOLOGY|RESULTS|DISCUSSION|CONCLUSION|REFERENCES|BACKGROUND|LITERATURE REVIEW|MATERIALS AND METHODS)$/i)) {
+                element.className = 'section-title';
+                element.tagName = 'h2';
+              } else if (text.match(/^[0-9]+\\.\\s*[A-Z]/) || text.match(/^[A-Z][a-z]+\\s+[A-Z]/) && text.length < 100) {
+                element.className = 'subsection-title';
+                element.tagName = 'h3';
+              }
+              
+              // Format paragraphs
+              if (element.tagName === 'P' && text.length > 50) {
+                element.style.textAlign = 'justify';
+                element.style.marginBottom = '1.25rem';
+                element.style.lineHeight = '1.8';
+              }
+            });
+            
+            // Enhanced image handling
+            const images = document.querySelectorAll('img');
             images.forEach((img, index) => {
               const originalSrc = img.getAttribute('src');
-              console.log(\`Image \${index}: \${originalSrc}\`);
+              console.log(\`🖼️ Processing image \${index + 1}: \${originalSrc}\`);
               
-              // Add error handling for broken images
+              // Wrap images in figure containers
+              if (!img.parentElement.classList.contains('figure')) {
+                const figure = document.createElement('div');
+                figure.className = 'figure';
+                img.parentNode.insertBefore(figure, img);
+                figure.appendChild(img);
+                
+                // Add caption if available
+                const caption = img.getAttribute('alt') || img.getAttribute('title');
+                if (caption) {
+                  const captionDiv = document.createElement('div');
+                  captionDiv.className = 'figure-caption';
+                  captionDiv.textContent = caption;
+                  figure.appendChild(captionDiv);
+                }
+              }
+              
+              // Enhanced error handling
               img.onerror = function() {
                 console.log(\`❌ Image failed to load: \${originalSrc}\`);
-                const parent = this.parentElement;
-                if (parent && parent.classList.contains('fig')) {
+                const figure = this.closest('.figure');
+                if (figure) {
                   const errorDiv = document.createElement('div');
                   errorDiv.className = 'image-error';
                   errorDiv.innerHTML = \`
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📷</div>
                     <strong>Image not available</strong><br>
-                    <small>\${originalSrc}</small>
+                    <small style="color: #a0aec0;">\${originalSrc || 'Unknown source'}</small>
                   \`;
-                  parent.insertBefore(errorDiv, this);
-                  this.style.display = 'none';
+                  figure.innerHTML = '';
+                  figure.appendChild(errorDiv);
                 }
               };
               
-              // Add loading success log
               img.onload = function() {
-                console.log(\`✅ Image loaded successfully: \${originalSrc}\`);
+                console.log(\`✅ Image loaded: \${originalSrc}\`);
               };
             });
             
-            // Re-run MathJax for equations
+            // Format tables
+            const tables = document.querySelectorAll('table');
+            tables.forEach(table => {
+              if (!table.parentElement.classList.contains('table-container')) {
+                const container = document.createElement('div');
+                container.className = 'table-container';
+                table.parentNode.insertBefore(container, table);
+                container.appendChild(table);
+              }
+            });
+            
+            // Format equations and formulas
+            const mathElements = document.querySelectorAll('[class*="math"], .equation, .formula');
+            mathElements.forEach(element => {
+              element.className += ' equation';
+            });
+            
+            // Extract and format keywords if present
+            const keywordPatterns = /(?:keywords?|key\\s*words?)\\s*:?\\s*([^.\\n]+)/i;
+            const fullText = contentContainer.textContent;
+            const keywordMatch = fullText.match(keywordPatterns);
+            if (keywordMatch) {
+              const keywordsDiv = document.createElement('div');
+              keywordsDiv.className = 'keywords';
+              const keywords = keywordMatch[1].split(/[,;]/).map(k => k.trim()).filter(k => k);
+              keywordsDiv.innerHTML = \`
+                <strong>Keywords:</strong><br>
+                \${keywords.map(keyword => \`<span class="keyword-tag">\${keyword}</span>\`).join('')}
+              \`;
+              contentContainer.insertBefore(keywordsDiv, contentContainer.firstChild);
+            }
+            
+            // Format reference list
+            const refElements = document.querySelectorAll('[class*="ref"], .reference, .citation');
+            if (refElements.length > 0) {
+              const refContainer = document.createElement('div');
+              refContainer.className = 'reference-list';
+              refContainer.innerHTML = '<h2 class="section-title">References</h2>';
+              
+              refElements.forEach((ref, index) => {
+                const refItem = document.createElement('div');
+                refItem.className = 'reference-item';
+                refItem.innerHTML = \`[\${index + 1}] \${ref.innerHTML}\`;
+                refContainer.appendChild(refItem);
+              });
+              
+              contentContainer.appendChild(refContainer);
+            }
+            
+            // Initialize MathJax for mathematical equations
             if (window.MathJax) {
               MathJax.typesetPromise().then(() => {
-                console.log('✅ MathJax rendered successfully');
+                console.log('✅ MathJax equations rendered');
               }).catch(err => {
-                console.log('❌ MathJax error:', err);
+                console.log('⚠️ MathJax error:', err);
               });
             }
+            
+            // Add smooth scrolling and reading progress
+            let ticking = false;
+            function updateReadingProgress() {
+              const scrolled = window.pageYOffset;
+              const rate = scrolled / (document.body.scrollHeight - window.innerHeight);
+              const progress = Math.round(rate * 100);
+              
+              if (progress > 0 && progress < 100) {
+                document.title = \`(\${progress}%) \${document.title.replace(/^\\(\\d+%\\)\\s*/, '')}\`;
+              }
+            }
+            
+            window.addEventListener('scroll', function() {
+              if (!ticking) {
+                requestAnimationFrame(updateReadingProgress);
+                ticking = true;
+                setTimeout(() => { ticking = false; }, 10);
+              }
+            });
+            
+            console.log('✅ Research paper formatting complete');
           });
         </script>
       </body>
@@ -433,25 +834,7 @@ const DocumentAnalysis = () => {
   }
 };
 
-  // Add this formatting function
-  const formatResearchPaper = (content) => {
-    if (!content) return 'No content available';
-    
-    // Preserve line breaks and paragraphs
-    return content
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .map(line => {
-        // Format titles (lines in all caps or with specific patterns)
-        if (line.match(/^[A-Z][A-Z\s]{10,}$/) || line.match(/^(ABSTRACT|INTRODUCTION|METHODS|RESULTS|CONCLUSION)/i)) {
-          return `<h3 class="text-xl font-bold mt-6 mb-3 text-blue-800">${line}</h3>`;
-        }
-        // Format regular paragraphs
-        return `<p class="mb-4 leading-relaxed">${line}</p>`;
-      })
-      .join('');
-  };
+  // Document formatting is now handled in the new tab JavaScript
 
   const handleCloseDocumentViewer = () => {
     setSelectedDocument(null);
@@ -538,27 +921,27 @@ const DocumentAnalysis = () => {
                     <h3 className="font-bold text-lg mb-4">Create New Project</h3>
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Project Name *
                         </label>
                         <input
                           type="text"
                           value={newProjectName}
                           onChange={(e) => setNewProjectName(e.target.value)}
-                          placeholder="e.g., Cancer Research 2024"
-                          className="w-full border-2 border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Cancer Research 2024"
+                          className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 transition-all duration-200 hover:border-gray-400"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Description (optional)
                         </label>
                         <textarea
                           value={newProjectDescription}
                           onChange={(e) => setNewProjectDescription(e.target.value)}
-                          placeholder="Describe what this project is about..."
-                          rows="2"
-                          className="w-full border-2 border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Describe your research project..."
+                          rows="3"
+                          className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 transition-all duration-200 hover:border-gray-400 resize-none"
                         />
                       </div>
                       <motion.button
@@ -710,8 +1093,8 @@ const DocumentAnalysis = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleSemanticSearch()}
-                      placeholder="Search for concepts, entities, or relationships..."
-                      className="flex-1 border-2 border-gray-300 rounded-xl px-5 py-3 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                      placeholder="Search concepts, entities, relationships..."
+                      className="flex-1 border-2 border-gray-300 rounded-xl px-5 py-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500 transition-all duration-200 hover:border-gray-400"
                     />
                     <motion.button
                       onClick={handleSemanticSearch}
