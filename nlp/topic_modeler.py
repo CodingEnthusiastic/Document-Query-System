@@ -1,21 +1,23 @@
 from typing import List, Dict, Any
-import spacy
+# # import spacy  # Temporarily disabled  # Temporarily disabled
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from sentence_transformers import SentenceTransformer
+# from transformers import AutoTokenizer, AutoModelForSequenceClassification  # Temporarily disabled
+# from sentence_transformers import SentenceTransformer  # Temporarily disabled
 import numpy as np
 
 class TopicModeler:
     def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm") if "en_core_web_sm" in spacy.util.get_installed_models() else None
+        self.nlp = None  # spacy temporarily disabled
         
-        # Initialize transformer model for topic classification
-        try:
-            self.topic_model = AutoModelForSequenceClassification.from_pretrained("facebook/bart-large-mnli")
-            self.tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-mnli")
-        except Exception:
-            self.topic_model = None
-            self.tokenizer = None
+        # Initialize transformer model for topic classification (temporarily disabled)
+        # try:
+        #     self.topic_model = AutoModelForSequenceClassification.from_pretrained("facebook/bart-large-mnli")
+        #     self.tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-mnli")
+        # except Exception:
+        #     self.topic_model = None
+        #     self.tokenizer = None
+        self.topic_model = None  # Temporarily disabled
+        self.tokenizer = None    # Temporarily disabled
         
         # Predefined topics for zero-shot classification
         self.possible_topics = [

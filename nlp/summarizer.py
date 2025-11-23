@@ -5,18 +5,20 @@ import numpy as np
 class Summarizer:
     def __init__(self):
         # Use transformer model for abstractive summarization
-        try:
-            from transformers import pipeline
-            self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        except Exception:
-            self.summarizer = None
+        # try:
+        #     from transformers import pipeline
+        #     self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        # except Exception:
+        #     self.summarizer = None
+        self.summarizer = None  # Temporarily disabled
         
         # Initialize sentence transformer for extractive summarization
-        try:
-            from sentence_transformers import SentenceTransformer
-            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except Exception:
-            self.sentence_model = None
+        # try:
+        #     from sentence_transformers import SentenceTransformer
+        #     self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+        # except Exception:
+        #     self.sentence_model = None
+        self.sentence_model = None  # Temporarily disabled
 
     async def summarize(self, text: str, max_length: int = 150) -> str:
         """Generate a summary of the text"""

@@ -1,0 +1,26 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+motor==3.3.2
+beanie==1.21.0
+pydantic==2.5.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pymongo==4.6.0
+PyPDF2==3.0.1
+python-docx==1.1.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+aiofiles==23.2.1
+slowapi==0.1.8
+numpy==1.24.3
+scipy==1.11.3
+
+# NLP libraries temporarily disabled due to compatibility issues with Python 3.12
+# spacy>=3.5,<3.8
+# transformers==4.35.2
+# torch==2.2.0
+# sentence-transformers==2.2.2
+# huggingface-hub>=0.16.4
+# pygetpapers>=0.10.0

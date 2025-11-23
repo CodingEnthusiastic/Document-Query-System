@@ -115,11 +115,12 @@ class TextProcessor:
     
     def __init__(self):
         # Initialize spaCy model if available
-        try:
-            import spacy
-            self.nlp = spacy.load("en_core_web_sm")
-        except:
-            self.nlp = None
+        # try:
+        #     import spacy
+        #     self.nlp = spacy.load("en_core_web_sm")
+        # except:
+        #     self.nlp = None
+        self.nlp = None  # Temporarily disabled
     
     def extract_entities(self, text: str) -> list:
         """Extract entities from text using spaCy"""
