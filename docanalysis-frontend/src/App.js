@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, FileText, BookOpen, BookMarked, Search, Activity } from 'lucide-react';
+import { Home, FileText, BookOpen, BookMarked, Search, Activity, HelpCircle } from 'lucide-react';
 import DocumentAnalysis from './components/DocumentAnalysis';
 import Dashboard from './components/Dashboard';
 import CustomDictionary from './components/CustomDictionary';
 import RelationAnalysis from './components/RelationAnalysis';
+import Help from './components/Help';
 import apiService from './services/apiService';
 import './App.css';
 
@@ -59,6 +60,7 @@ const Sidebar = () => {
     { to: '/dashboard', icon: Activity, label: 'Dashboard' },
     { to: '/dictionaries', icon: BookMarked, label: 'Custom Dictionaries' },
     { to: '/relations', icon: BookOpen, label: 'Relation Analysis' },
+    { to: '/help', icon: HelpCircle, label: 'Help' },
   ];
 
   return (
@@ -388,6 +390,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dictionaries" element={<CustomDictionary />} />
               <Route path="/relations" element={<RelationAnalysis />} />
+              <Route path="/help" element={<Help />} />
             </Routes>
           </AnimatePresence>
         </div>
