@@ -1,410 +1,199 @@
-## docanalysis 
-`docanalysis` is a Command Line Tool that ingests corpora and carries out text-analysis of documents, including
-- sectioning
-- NLP/text-mining
-- dictionary generation 
+# DocAnalysis: AI-Powered Research Document Analysis Platform
 
-Besides the bespoke code, it uses [NLTK](https://www.nltk.org/) and other Python tools for many operations, and [spaCy](https://spacy.io/) or [scispaCy](https://allenai.github.io/scispacy/) for extraction and annotation of entities. Outputs summary data and word-dictionaries. 
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/codingenthusiastic/document-query-system)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python Version](https://img.shields.io/badge/python-3.8+-informational.svg)](https://www.python.org/)
+[![React Version](https://img.shields.io/badge/react-18+-blueviolet.svg)](https://reactjs.org/)
+[![FastAPI](https://img.shields.io/badge/backend-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
 
-### Set up `venv`
-We recommend you create a virtual environment (`venv`) before installing `docanalysis` and that you activate the `venv` before each time you run `docanalysis`.
+**DocAnalysis** is a comprehensive, modern platform designed to ingest, analyze, and unlock insights from complex research documents. It leverages advanced, transformer-based NLP models to provide deep semantic understanding, moving far beyond traditional keyword search. Organize your research into projects, automatically fetch papers from academic sources like PubMed, and use our interactive dashboard to explore entities, relationships, and thematic clusters within your corpus.
 
-#### Windows
-Creating a `venv`
-```
->> mkdir docanalysis_demo
->> cd docanalysis_demo
->> python -m venv venv
-```
+---
 
-Activating `venv`
-```
->> venv\Scripts\activate.bat
-```
+## Key Features
 
-#### MacOS
-Creating a `venv`
-```
->> mkdir docanalysis_demo
->> cd docanalysis_demo
->> python3 -m venv venv
-```
+### Core Capabilities
+- **Project-Based Organization**: Group your research documents, analysis results, and annotations into distinct projects.
+- **Automated Paper Fetching**: Directly integrates with PubMed Central via `pygetpapers` to search and download full-text research papers into your projects.
+- **Multi-Format Document Support**: Seamlessly upload and process various document formats, including PDF, DOCX, TXT, and native JATS XML.
+- **Semantic Search**: Go beyond keywords. Our system generates vector embeddings for all content, enabling you to find documents based on conceptual similarity and context.
+- **Interactive Dashboard**: A modern, responsive frontend built with React provides a central hub for managing projects, uploading files, and visualizing analysis results.
 
-Activating `venv`
-```
->> source venv/bin/activate
-```
+### Advanced NLP Analysis
+- **Transformer-Based Entity Extraction (NER)**: Automatically identifies and categorizes key entities (e.g., medical terms, software, organizations) using state-of-the-art models.
+- **Relationship Extraction**: Discovers and maps the relationships between entities within the text (e.g., "Drug A *treats* Disease B").
+- **Custom Dictionary Support**: Enhance NER accuracy by creating and managing your own domain-specific dictionaries for targeted entity recognition.
+- **JATS XML to HTML Rendering**: Includes a sophisticated XSLT transformation to render academic papers from their native JATS XML format into clean, readable HTML for in-app viewing.
 
-Refer the [official documentation](https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/) for more help. 
+---
 
-### Install `docanalysis`
-You can download `docanalysis` from PYPI. 
-```
-  pip install docanalysis
-```
-If you are on a Mac
-```
-pip3 install docanalysis
-```
+## System Architecture
 
-Download python from: [https://www.python.org/downloads/](https://www.python.org/downloads/) and select the option `Add Python to Path while installing`. Make sure `pip` is installed along with python. Check out [https://pip.pypa.io/en/stable/installation/](https://pip.pypa.io/en/stable/installation/) if you have difficulties installing pip.
-
-### Run `docanalysis`
-`docanalysis --help` should list the flags we support and their use.
+DocAnalysis is built on a modern, decoupled architecture designed for scalability and maintainability.
 
 ```
-usage: docanalysis.py [-h] [--run_pygetpapers] [--make_section] [-q QUERY] [-k HITS] [--project_name PROJECT_NAME] [-d DICTIONARY] [-o OUTPUT]
-                      [--make_ami_dict MAKE_AMI_DICT] [--search_section [SEARCH_SECTION [SEARCH_SECTION ...]]] [--entities [ENTITIES [ENTITIES ...]]]
-                      [--spacy_model SPACY_MODEL] [--html HTML] [--synonyms SYNONYMS] [--make_json MAKE_JSON] [--search_html] [--extract_abb EXTRACT_ABB]
-                      [-l LOGLEVEL] [-f LOGFILE]
-
-Welcome to docanalysis version 0.1.3. -h or --help for help
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --run_pygetpapers     [Command] downloads papers from EuropePMC via pygetpapers
-  --make_section        [Command] makes sections; requires a fulltext.xml in CTree directories
-  -q QUERY, --query QUERY
-                        [pygetpapers] query string
-  -k HITS, --hits HITS  [pygetpapers] number of papers to download
-  --project_name PROJECT_NAME
-                        CProject directory name
-  -d DICTIONARY, --dictionary DICTIONARY
-                        [file name/url] existing ami dictionary to annotate sentences or support supervised entity extraction
-  -o OUTPUT, --output OUTPUT
-                        outputs csv with sentences/terms
-  --make_ami_dict MAKE_AMI_DICT
-                        [Command] title for ami-dict. Makes ami-dict of all extracted entities; works only with spacy
-  --search_section [SEARCH_SECTION [SEARCH_SECTION ...]]
-                        [NER/dictionary search] section(s) to annotate. Choose from: ALL, ACK, AFF, AUT, CON, DIS, ETH, FIG, INT, KEY, MET, RES, TAB, TIL. Defaults to
-                        ALL
-  --entities [ENTITIES [ENTITIES ...]]
-                        [NER] entities to extract. Default (ALL). Common entities SpaCy: GPE, LANGUAGE, ORG, PERSON (for additional ones check: ); SciSpaCy: CHEMICAL,
-                        DISEASE
-  --spacy_model SPACY_MODEL
-                        [NER] optional. Choose between spacy or scispacy models. Defaults to spacy
-  --html HTML           outputs html with sentences/terms
-  --synonyms SYNONYMS   annotate the corpus/sections with synonyms from ami-dict
-  --make_json MAKE_JSON
-                        outputs json with sentences/terms
-  --search_html         searches html documents (mainly IPCC)
-  --extract_abb EXTRACT_ABB
-                        [Command] title for abb-ami-dict. Extracts abbreviations and expansions; makes ami-dict of all extracted entities
-  -l LOGLEVEL, --loglevel LOGLEVEL
-                        provide logging level. Example --log warning <<info,warning,debug,error,critical>>, default='info'
-  -f LOGFILE, --logfile LOGFILE
-                        saves log to specified file in output directory as well as printing to terminal
++--------------------------------+
+|       User Interface           |
+|      (React Frontend)          |
++---------------|----------------+
+                | (REST API Calls)
+                v
++--------------------------------+
+|      Backend Services          |
+|    (FastAPI API Server)        |
++-----------------|--------------+
+|                 |                                  +--------------------------------+
+| (Creates Jobs)  | (Stores & Retrieves Data)        |        Data & NLP Layer        |
+v                 v                                  +--------------------------------+
++--------------------------------+                   |                                |
+|      Background Workers        |                   |    [ MongoDB Database ]        |
+|      (Analysis Tasks)          |------------------>|    (Documents, Projects,       |
++-----------------|--------------+                   |     Users, Annotations)        |
+                  |                                  |                                |
+                  | (Performs NLP using Models)      |                                |
+                  v                                  |    [ Vector Store ]            |
++--------------------------------+                   |    (For Semantic Search)       |
+|           NLP Models           |------------------>|                                |
+|   (Transformers, spaCy, etc.)  |  (Stores Vectors) |                                |
++--------------------------------+                   +--------------------------------+
+      |
+      | (Fetches Papers via pygetpapers)
+      v
++--------------------------------+
+|      External Sources          |
+|    (PubMed Central, etc.)      |
++--------------------------------+
 ```
 
-#### Download papers from [EPMC](https://europepmc.org/) via `pygetpapers`
-COMMAND
-```
-docanalysis --run_pygetpapers -q "terpene" -k 10 --project_name terpene_10
-```
-LOGS
-```
-INFO: making project/searching terpene for 10 hits into C:\Users\shweata\docanalysis\terpene_10
-INFO: Total Hits are 13935
-1it [00:00, 936.44it/s]
-INFO: Saving XML files to C:\Users\shweata\docanalysis\terpene_10\*\fulltext.xml
-100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:30<00:00,  3.10s/it]
+-   **Frontend (React)**: The user-facing application that provides all interactive controls and visualizations.
+-   **Backend (FastAPI)**: The core API that handles business logic, orchestrates analysis tasks, and manages data flow. It exposes a comprehensive set of REST endpoints.
+-   **Database (MongoDB)**: The primary data store for all user, project, document, and analysis data. Beanie ODM is used for structured data modeling.
+-   **NLP Models (Transformers)**: The engine for all advanced text analysis, powered by libraries like Hugging Face Transformers and spaCy.
+
+---
+
+## How The Analysis Pipeline Works
+
+DocAnalysis employs a sophisticated, multi-stage pipeline to process and analyze documents.
+
+### 1. Ingestion: Getting Documents into the System
+Your documents enter the system in one of two ways:
+- **Paper Fetching**: You provide a search query (e.g., "machine learning for drug discovery"). The backend uses `pygetpapers` to query PubMed Central, download the full-text JATS XML of the matching papers, and associate them with your selected project.
+- **Direct Upload**: You can upload files (PDF, DOCX, TXT, XML) directly. The system automatically detects the file type for appropriate processing.
+
+### 2. Processing and Content Extraction
+Once a document is ingested, the `DocumentService` takes over:
+-   **Text Extraction**: Content is extracted based on file type. For formats like PDF and DOCX, standard libraries are used.
+-   **JATS XML Transformation**: For academic papers in JATS XML format, a crucial step occurs. The system applies the `jats_to_html.xsl` stylesheet to transform the complex XML into a clean, structured HTML document. This not only makes the paper readable but also preserves important semantic structures like sections, figures, and tables.
+-   **Database Storage**: The extracted text, the generated HTML (if applicable), and metadata are stored in the MongoDB `document_analyses` collection, linked to its parent project. The document is now ready for deep analysis.
+
+### 3. Advanced NLP Analysis
+When you trigger an analysis for a project, a background job is created to perform the following NLP tasks without blocking the user interface:
+1.  **Named Entity Recognition (NER)**: The `EntityExtractor` processes the text of each document. It uses a transformer-based model (e.g., a fine-tuned BERT or spaCy's transformer pipeline) to identify and classify entities. This process is augmented by the project's **custom dictionaries**, allowing for highly accurate, domain-specific entity recognition.
+2.  **Relationship Extraction**: The `RelationshipExtractor` scans the text for co-occurring entities and analyzes the linguistic patterns connecting them to identify semantic relationships (e.g., subject-verb-object triples).
+3.  **Vector Embedding Generation**: To power semantic search, the text is chunked into meaningful segments (e.g., paragraphs). Each chunk is passed through a Sentence-Transformer model (like `all-MiniLM-L6-v2`) to generate a high-dimensional vector embedding. This vector mathematically represents the semantic meaning of the text.
+4.  **Data Persistence**: All extracted entities, relationships, and vector embeddings are saved back to their respective `DocumentAnalysis` record in MongoDB. The vector embeddings are stored in a field that can be indexed for efficient similarity searches.
+
+### 4. Search and Retrieval
+- **Keyword Search**: Performs a standard text search against the document content in MongoDB.
+- **Semantic Search**: This is where the power of the pipeline shines. When you enter a semantic search query, that query is also converted into a vector embedding using the same Sentence-Transformer model. The system then performs a vector similarity search (e.g., cosine similarity) in MongoDB to find the document chunks whose embeddings are closest to the query's embedding, returning results based on meaning rather than just shared words.
+
+---
+
+## Technology Stack
+
+| Category      | Technology                                                                                                  |
+|---------------|-------------------------------------------------------------------------------------------------------------|
+| **Frontend**  | React, Tailwind CSS, Framer Motion, Axios                                                                   |
+| **Backend**   | Python, FastAPI, Uvicorn                                                                                    |
+| **Database**  | MongoDB                                                                                                     |
+| **NLP**       | spaCy, Hugging Face Transformers, Sentence-Transformers, PyTorch                                            |
+| **Data Access**| Beanie (ODM for MongoDB)                                                                                    |
+| **Tooling**   | pygetpapers, lxml                                                                                           |
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python 3.8+
+- Node.js 16+
+- MongoDB 4.0+ (running locally or on a cloud service like MongoDB Atlas)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/codingenthusiastic/document-query-system.git
+cd document-query-system
 ```
 
-CPROJ
+### 2. Configure Environment Variables
+Create a `.env` file in the project root by copying the example file:
+```bash
+cp .env.example .env
 ```
-C:\USERS\SHWEATA\DOCANALYSIS\TERPENE_10
-│   eupmc_results.json
-│
-├───PMC8625850
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8727598
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8747377
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8771452
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8775117
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8801761
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8831285
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8839294
-│       eupmc_result.json
-│       fulltext.xml
-│
-├───PMC8840323
-│       eupmc_result.json
-│       fulltext.xml
-│
-└───PMC8879232
-        eupmc_result.json
-        fulltext.xml
+Now, edit the `.env` file and set your `MONGODB_URL` and `SECRET_KEY`.
+```env
+MONGODB_URL=mongodb://localhost:27017/document_analysis
+SECRET_KEY=your-super-secret-key-that-is-long-and-secure
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
-#### Section the papers
-COMMAND
-```
-docanalysis --project_name terpene_10 --make_section
-```
-LOGS
-```
-WARNING: Making sections in /content/terpene_10/PMC9095633/fulltext.xml
-INFO: dict_keys: dict_keys(['abstract', 'acknowledge', 'affiliation', 'author', 'conclusion', 'discussion', 'ethics', 'fig_caption', 'front', 'introduction', 'jrnl_title', 'keyword', 'method', 'octree', 'pdfimage', 'pub_date', 'publisher', 'reference', 'results_discuss', 'search_results', 'sections', 'svg', 'table', 'title'])
-WARNING: loading templates.json
-INFO: wrote XML sections for /content/terpene_10/PMC9095633/fulltext.xml /content/terpene_10/PMC9095633/sections
-WARNING: Making sections in /content/terpene_10/PMC9120863/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9120863/fulltext.xml /content/terpene_10/PMC9120863/sections
-WARNING: Making sections in /content/terpene_10/PMC8982386/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC8982386/fulltext.xml /content/terpene_10/PMC8982386/sections
-WARNING: Making sections in /content/terpene_10/PMC9069239/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9069239/fulltext.xml /content/terpene_10/PMC9069239/sections
-WARNING: Making sections in /content/terpene_10/PMC9165828/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9165828/fulltext.xml /content/terpene_10/PMC9165828/sections
-WARNING: Making sections in /content/terpene_10/PMC9119530/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9119530/fulltext.xml /content/terpene_10/PMC9119530/sections
-WARNING: Making sections in /content/terpene_10/PMC8982077/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC8982077/fulltext.xml /content/terpene_10/PMC8982077/sections
-WARNING: Making sections in /content/terpene_10/PMC9067962/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9067962/fulltext.xml /content/terpene_10/PMC9067962/sections
-WARNING: Making sections in /content/terpene_10/PMC9154778/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9154778/fulltext.xml /content/terpene_10/PMC9154778/sections
-WARNING: Making sections in /content/terpene_10/PMC9164016/fulltext.xml
-INFO: wrote XML sections for /content/terpene_10/PMC9164016/fulltext.xml /content/terpene_10/PMC9164016/sections
- 47% 1056/2258 [00:01<00:01, 1003.31it/s]ERROR: cannot parse /content/terpene_10/PMC9165828/sections/1_front/1_article-meta/26_custom-meta-group/0_custom-meta/1_meta-value/0_xref.xml
- 67% 1516/2258 [00:01<00:00, 1047.68it/s]ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/7_xref.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/14_email.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/3_xref.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/6_xref.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/9_email.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/10_email.xml
-ERROR: cannot parse /content/terpene_10/PMC9119530/sections/1_front/1_article-meta/24_custom-meta-group/0_custom-meta/1_meta-value/4_xref.xml
-...
-100% 2258/2258 [00:02<00:00, 949.43it/s] 
+### 3. Backend Setup
+```bash
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Download the required spaCy model
+python -m spacy download en_core_web_sm
 ```
 
-CTREE
-```
-├───PMC8625850
-│   └───sections
-│       ├───0_processing-meta
-│       ├───1_front
-│       │   ├───0_journal-meta
-│       │   └───1_article-meta
-│       ├───2_body
-│       │   ├───0_1._introduction
-│       │   ├───1_2._materials_and_methods
-│       │   │   ├───1_2.1._materials
-│       │   │   ├───2_2.2._bacterial_strains
-│       │   │   ├───3_2.3._preparation_and_character
-│       │   │   ├───4_2.4._evaluation_of_the_effect_
-│       │   │   ├───5_2.5._time-kill_studies
-│       │   │   ├───6_2.6._propidium_iodide_uptake-e
-│       │   │   └───7_2.7._hemolysis_test_from_human
-│       │   ├───2_3._results
-│       │   │   ├───1_3.1._encapsulation_of_terpene_
-│       │   │   ├───2_3.2._both_terpene_alcohol-load
-│       │   │   ├───3_3.3._farnesol_and_geraniol-loa
-│       │   │   └───4_3.4._farnesol_and_geraniol-loa
-│       │   ├───3_4._discussion
-│       │   ├───4_5._conclusions
-│       │   └───5_6._patents
-│       ├───3_back
-│       │   ├───0_ack
-│       │   ├───1_fn-group
-│       │   │   └───0_fn
-│       │   ├───2_app-group
-│       │   │   └───0_app
-│       │   │       └───2_supplementary-material
-│       │   │           └───0_media
-│       │   └───9_ref-list
-│       └───4_floats-group
-│           ├───4_table-wrap
-│           ├───5_table-wrap
-│           ├───6_table-wrap
-│           │   └───4_table-wrap-foot
-│           │       └───0_fn
-│           ├───7_table-wrap
-│           └───8_table-wrap
-...
-```
-##### Search sections using dictionary
-COMMAND
-```
-docanalysis --project_name terpene_10 --output entities.csv --make_ami_dict entities.xml
-```
-LOGS
-```
-INFO: Found 7134 sentences in the section(s).
-INFO: getting terms from /content/activity.xml
-100% 7134/7134 [00:02<00:00, 3172.14it/s]
-/usr/local/lib/python3.7/dist-packages/docanalysis/entity_extraction.py:352: FutureWarning: The default value of regex will change from True to False in a future version. In addition, single character regular expressions will *not* be treated as literal strings when regex=True.
-  "[", "").str.replace("]", "")
-INFO: wrote output to /content/terpene_10/activity.csv
+### 4. Frontend Setup
+```bash
+# Navigate to the frontend directory
+cd docanalysis-frontend
+
+# Install Node.js dependencies
+npm install
 ```
 
-#### Extract entities
-We use `spacy` to extract Named Entites. Here's the list of Entities it supports:CARDINAL, DATE, EVENT, FAC, GPE, LANGUAGE, LAW,LOC, MONEY, NORP, ORDINAL, ORG, PERCENT, PERSON, PRODUCT, QUANTITY, TIME, WORK_OF_ART 
-INPUT
-```
-docanalysis --project_name terpene_10 --make_section --spacy_model spacy --entities ORG --output org.csv
-```
-LOGS
-```
-INFO: Found 7134 sentences in the section(s).
-INFO: Loading spacy
-100% 7134/7134 [01:08<00:00, 104.16it/s]
-/usr/local/lib/python3.7/dist-packages/docanalysis/entity_extraction.py:352: FutureWarning: The default value of regex will change from True to False in a future version. In addition, single character regular expressions will *not* be treated as literal strings when regex=True.
-  "[", "").str.replace("]", "")
-INFO: wrote output to /content/terpene_10/org.csv
-```
-##### Extract information from specific section(s)
-You can choose to extract entities from specific sections
+---
 
-COMMAND
-```
-docanalysis --project_name terpene_10 --make_section --spacy_model spacy --search_section AUT, AFF --entities ORG --output org_aut_aff.csv
-```
-LOG
-```
-INFO: Found 28 sentences in the section(s).
-INFO: Loading spacy
-100% 28/28 [00:00<00:00, 106.66it/s]
-/usr/local/lib/python3.7/dist-packages/docanalysis/entity_extraction.py:352: FutureWarning: The default value of regex will change from True to False in a future version. In addition, single character regular expressions will *not* be treated as literal strings when regex=True.
-  "[", "").str.replace("]", "")
-INFO: wrote output to /content/terpene_10/org_aut_aff.csv
-```
-#### Create dictionary of extracted entities
-COMMAND
-```
-docanalysis --project_name terpene_10 --make_section --spacy_model spacy --search_section AUT, AFF --entities ORG --output org_aut_aff.csvv --make_ami_dict org
-```
-LOG
-```
-INFO: Found 28 sentences in the section(s).
-INFO: Loading spacy
-100% 28/28 [00:00<00:00, 96.56it/s] 
-/usr/local/lib/python3.7/dist-packages/docanalysis/entity_extraction.py:352: FutureWarning: The default value of regex will change from True to False in a future version. In addition, single character regular expressions will *not* be treated as literal strings when regex=True.
-  "[", "").str.replace("]", "")
-INFO: wrote output to /content/terpene_10/org_aut_aff.csvv
-INFO: Wrote all the entities extracted to ami dict
-```
+## Usage
 
-Snippet of the dictionary
+### 1. Start the Backend API Server
+Ensure you are in the project's root directory with your Python virtual environment activated.
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload```
+The API will be live at `http://localhost:8000`.
+
+### 2. Start the Frontend Application
+In a **new terminal**, navigate to the `docanalysis-frontend` directory.
+```bash
+cd docanalysis-frontend
+npm start
 ```
-<?xml version="1.0"?>
-- dictionary title="/content/terpene_10/org.xml">
-<entry count="2" term="Department of Biochemistry"/>
-<entry count="2" term="Chinese Academy of Agricultural Sciences"/>
-<entry count="2" term="Tianjin University"/>
-<entry count="2" term="Desert Research Center"/>
-<entry count="2" term="Chinese Academy of Sciences"/>
-<entry count="2" term="University of Colorado Boulder"/>
-<entry count="2" term="Department of Neurology"/>
-<entry count="1" term="Max Planck Institute for Chemical Ecology"/>
-<entry count="1" term="College of Forest Resources and Environmental Science"/>
-<entry count="1" term="Michigan Technological University"/>
-```
+The React application will be available at `http://localhost:3000`.
 
-### Extract Abbreviations
+### API Documentation
+Once the backend server is running, you can access the interactive API documentation (powered by Swagger UI) at:
+[**http://localhost:8000/docs**](http://localhost:8000/docs)
 
-```
-docanalysis --project_name corpus\ethics_10 --output dict_search_5.csv  --make_json dict_search_5.json --make_ami_dict entities --extract_abb ethics_abb
-```
+---
 
-`--extract_abb` extracts all abbreviations and make an ami-dictionary of abbreviations and its expansion. 
+## Contributing
+We welcome contributions! Please follow these steps to contribute:
+1.  Fork the repository.
+2.  Create a new feature branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes and commit them with descriptive messages.
+4.  Push your changes to your forked repository (`git push origin feature/your-feature-name`).
+5.  Open a Pull Request to the `main` branch of the original repository.
 
-EXAMPLE DICTIONARY: 
-```
-<dictionary title="ethics_abb">
-  <entry name="ASD" term="Atrial septal defect"/>
-  <entry name="SPSS" term="Statistical Package for Social Sciences"/>
-  <entry name="ACGME" term="Accreditation Council of Graduate Medical Education"/>
-  <entry name="ABP" term="American Board of Paediatrics"/>
-  <entry name="TBL" term="Team Based Learning"/>
-  <entry name="TBL" term="Team-Based Learning"/>
-  <entry name="UNTH" term="University of Nigeria Teaching Hospital"/>
-  <entry name="PAH" term="pulmonary hypertension"/>
-  <entry name="HREC" term="Human Sciences Research Council, Research Ethics Committee"/>
-  <entry name="HREC" term="Human Sciences Research Council, Research Ethics Committee"/>
-  <entry name="CDC" term="Center for Disease Control and Prevention"/>
-  <entry name="ASD" term="Atrial septal defect"/>
-  <entry name="PAH" term="pulmonary arterial hypertension"/>
-  <entry name="CVDs" term="cardiovascular diseases"/>
-  <entry name="BNs" term="Bayesian networks"/>
-  <entry name="GI" term="gastrointestinal cancer"/>
-  <entry name="ART" term="antiretroviral therapy"/>
-  <entry name="HIV" term="human immunodeficiency virus"/>
-  <entry name="GATE" term="Global Cooperation on Assistive Technology"/>
-</dictionary>
-```
+---
 
-### Search HTML
-If you working with HTML files (IPCC Reports, for example) and not XMLs in CProjects, you can use `--search_html` flag.
-
-```
-docanalysis --project_name corpus\ipcc_sectioned  --extract_abb ethics_abb --search_html
-```
-
- Make sure that your `html` sections is in `sections` folder. Here's an example structure: 
-
-```
-C:.
-|   dict_search_2.csv
-|   dict_search_2.json
-|
-\---chap4
-    |   chapter_4
-    |
-    \---sections
-            4.1.html
-            4.2.1.html
-            4.2.2.html
-            4.2.3.html
-            4.2.4.html
-            4.2.5.html
-            4.2.7.html
-            4.2.html
-            4.3.1.html
-            4.3.2.html
-            4.3.html
-            4.4.1.html
-            4.4.2.html
-            4.4.html
-            4.5.html
-            executive_summary.html
-            frequently_asked_questions.html
-            table_of_contents.html
-```
-If you haven't sectioned your `html`, please use `py4ami` to section it.  
-#### What is a dictionary
-Dictionary, in `ami`'s terminology, a set of terms/phrases in XML format. 
-Dictionaries related to ethics and acknowledgments are available in [Ethics Dictionary](https://github.com/petermr/docanalysis/tree/main/ethics_dictionary) folder
-
-If you'd like to create a custom dictionary, you can find the steps, [here](https://github.com/petermr/tigr2ess/blob/master/dictionaries/TUTORIAL.md)
-
-```
-### Python tools used
-- [`pygetpapers`](https://github.com/petermr/pygetpapers) - scrape open repositories to download papers of interest
-- [nltk](https://www.nltk.org/) - splits sentences
-- [spaCy](https://spacy.io/) and  [SciSpaCy](https://allenai.github.io/scispacy/)
- - recognize Named-Entities and label them
-     - Here's the list of NER labels [SpaCy's English model](https://spacy.io/models/en) provides:  
-     `CARDINAL, DATE, EVENT, FAC, GPE, LANGUAGE, LAW, LOC, MONEY, NORP, ORDINAL, ORG, PERCENT, PERSON, PRODUCT, QUANTITY, TIME, WORK_OF_ART`
-
-
-
+## License
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.

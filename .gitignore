@@ -147,3 +147,5 @@ ORG.text
 
 #vscode
 .vscode/
+
+backup/

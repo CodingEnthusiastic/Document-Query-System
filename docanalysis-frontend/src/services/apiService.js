@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // ⚠️ Change this if accessing backend from another device
-const API_BASE_URL = 'http://192.168.1.10:5000/api'; 
+const API_BASE_URL = 'http://localhost:8000'; 
 
 // Axios instance
 const api = axios.create({
@@ -40,34 +40,33 @@ const apiService = {
     return await api.get('/health');
   },
 
-  // ✅ File upload
-  async uploadFiles(formData) {
-    const res = await axios.post(`${API_BASE_URL}/upload`, formData, {
+  // ✅ File upload - needs to be updated to match backend API structure
+  async uploadFiles(projectId, formData) {
+    const res = await axios.post(`${API_BASE_URL}/projects/${projectId}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
     });
     return res.data;
   },
 
-  // ✅ Fetch papers
-  async fetchPapers({ query, hits }) {
-    return await api.post('/fetch-papers', { query, hits });
+  // ✅ Get HTML content from a document
+  async getDocumentHTML(documentId) {
+    return await api.get(`/documents/${encodeURIComponent(documentId)}/html`);
+  },
+
+  // ✅ Fetch papers - keeping the same since this was already working with the backend
+  async fetchPapers(projectId, { query, hits }) {
+    return await api.post(`/projects/${projectId}/fetch-papers`, { query, hits });
   },
 
   // ✅ Start analysis for uploaded files
-  async startUploadAnalysis(config) {
-    return await api.post('/analyze', {
-      ...config,
-      job_type: 'upload',
-    });
+  async startUploadAnalysis(projectId) {
+    return await api.post(`/projects/${projectId}/analyze`);
   },
 
   // ✅ Start analysis for existing project
-  async analyzeExistingProject(config) {
-    return await api.post('/analyze', {
-      ...config,
-      job_type: 'existing_project',
-    });
+  async analyzeExistingProject(projectId) {
+    return await api.post(`/projects/${projectId}/analyze`);
   },
 
   // ✅ Start analysis for freshly fetched papers
@@ -77,7 +76,7 @@ const apiService = {
 
   // ✅ Get job status
   async getJobStatus(jobId) {
-    return await api.get(`/status/${jobId}`);
+    return await api.get(`/jobs/${jobId}`);
   },
 
   // ✅ Download results
@@ -101,9 +100,90 @@ const apiService = {
     return await api.get('/entities');
   },
 
-  // ✅ Get paper content (requires project_name)
   async getPaperContent(pmcid, project_name) {
     return await api.get(`/papers/${pmcid}?project_name=${encodeURIComponent(project_name)}`);
+  },
+
+  async getExistingPapers() {
+    return await api.get('/projects/papers');
+  },
+
+  async startThematicClustering(config) {
+    return await api.post('/analyze/thematic-clustering', config);
+  },
+
+  async extractRelations(text) {
+    return await api.post('/extract-relations', { text });
+  },
+
+  // ✅ Get list of documents
+  // ✅ Get list of documents - ROBUST VERSION
+  async getDocuments(projectId) {
+    try {
+      const response = await api.get(`/projects/${projectId}/documents`);
+      console.log('API Service - Raw response:', response);
+      
+      // Handle different possible response structures
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response.documents && Array.isArray(response.documents)) {
+        return response.documents;
+      } else if (response.data && Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data && response.data.documents && Array.isArray(response.data.documents)) {
+        return response.data.documents;
+      }
+      
+      console.warn('API Service - Unexpected response structure:', response);
+      return [];
+    } catch (error) {
+      console.error('API Service - Error fetching documents:', error);
+      throw error;
+    }
+  },
+
+  // ✅ Get text content from a document
+  async getDocumentText(documentId) {
+    return await api.get(`/documents/${encodeURIComponent(documentId)}/text`);
+  },
+
+  // ✅ Dictionary management
+  async validateDictionary(data) {
+    return await api.post('/dictionaries/validate', data);
+  },
+
+  async createCustomDictionary(data) {
+    return await api.post('/dictionaries/create', data);
+  },
+
+  // ✅ Semantic search
+  async semanticSearch(projectId, query, limit = 10) {
+    return await api.post('/search/semantic', {
+      project_id: projectId,
+      query,
+      limit
+    });
+  },
+
+  // ✅ Project management
+  async getProjects() {
+    return await api.get('/projects');
+  },
+
+  async createProject(data) {
+    return await api.post('/projects', data);
+  },
+
+  async getProject(projectId) {
+    return await api.get(`/projects/${projectId}`);
+  },
+
+  async deleteProject(projectId) {
+    return await api.delete(`/projects/${projectId}`);
+  },
+
+  async deleteDocument(documentId) {
+    return await api.delete(`/documents/${documentId}`);
   },
 };
 

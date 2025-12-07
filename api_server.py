@@ -1,590 +1,1160 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+"""
+Modern Document Analysis API with MongoDB
+Automatic project creation and management
+"""
 
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
 import os
-import uuid
-from datetime import datetime
-import threading
-import time
-from pathlib import Path
-import shutil
-from werkzeug.utils import secure_filename
-from docanalysis.entity_extraction import EntityExtraction
-import xml.etree.ElementTree as ET
+
+from requests import Response
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, BackgroundTasks, Request, Query
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import secrets
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie, PydanticObjectId
+from beanie.odm.operators.find.comparison import Eq
+import asyncio
+import logging
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import re
+import io
 
-# File processing imports
-try:
-    import PyPDF2
-    PDF_SUPPORT = True
-except ImportError:
-    PDF_SUPPORT = False
+# Import models
+from models.user import User
+from models.document import DocumentAnalysis
+from models.job import AnalysisJob
+from models.project import ResearchProject
+from models.annotation import Annotation
+from models.semantic_chunk import SemanticChunk
+from models.dictionary import CustomDictionary
 
-try:
-    from docx import Document
-    DOCX_SUPPORT = True
-except ImportError:
-    DOCX_SUPPORT = False
+# Import services
+from services.document_service import DocumentService
+from services.analysis_service import AnalysisService
+from services.paper_fetcher_service import PaperFetcher
+from services.project_service import ProjectService
 
-try:
-    from bs4 import BeautifulSoup
-    HTML_SUPPORT = True
-except ImportError:
-    HTML_SUPPORT = False
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Configuration
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'pdf', 'xml', 'html', 'txt', 'docx'}
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+SECRET_KEY = os.getenv("SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app = FastAPI(
+    title="Modern Document Analysis API",
+    description="Automatic project creation with advanced document analysis",
+    version="2.0.0"
+)
 
-# Create upload directory if it doesn't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Add middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Store analysis jobs in memory (in production, use a database)
-analysis_jobs = {}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class AnalysisJob:
-    def __init__(self, job_id, params, job_type='download'):
-        self.job_id = job_id
-        self.params = params
-        self.job_type = job_type  # 'download', 'upload', or 'existing_project'
-        self.status = 'queued'
-        self.progress = 0
-        self.current_step = 'Initializing...'
-        self.result = None
-        self.error = None
-        self.start_time = datetime.now()
-        self.end_time = None
-        self.project_path = None
-        self.uploaded_files = []
+from dotenv import load_dotenv
+load_dotenv()
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# MongoDB connection
+try:
+    client = AsyncIOMotorClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+    client.admin.command('ping')
+    logger.info("Connected to MongoDB successfully")
+except Exception as e:
+    logger.error(f"Failed to connect to MongoDB: {e}")
+    raise
 
-def extract_text_from_file(file_path):
-    """Extract text content from various file formats"""
-    file_ext = Path(file_path).suffix.lower()
-    
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and models"""
     try:
-        if file_ext == '.txt':
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read()
-                
-        elif file_ext == '.xml':
-            return extract_xml_content(file_path)
-            
-        elif file_ext == '.html':
-            return extract_html_content(file_path)
-            
-        elif file_ext == '.pdf' and PDF_SUPPORT:
-            return extract_pdf_content(file_path)
-            
-        elif file_ext == '.docx' and DOCX_SUPPORT:
-            return extract_docx_content(file_path)
-            
-        else:
-            # Fallback: try to read as text
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-                return content if content.strip() else "Content could not be extracted"
-                
-    except Exception as e:
-        return f"Error reading file: {str(e)}"
-
-def extract_xml_content(file_path):
-    """Extract readable content from XML files"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        db = client.document_analysis
+        await db.command('ping')
+        logger.info("Database is accessible")
         
-        # Try to parse as XML and extract text content
-        try:
-            root = ET.fromstring(content)
-            # Extract all text content, removing XML tags
-            text_content = ET.tostring(root, encoding='unicode', method='text')
-            # Clean up whitespace
-            text_content = re.sub(r'\s+', ' ', text_content).strip()
-            return text_content if text_content else content
-        except ET.ParseError:
-            # If XML parsing fails, return raw content
-            return content
-            
-    except Exception as e:
-        return f"Error reading XML file: {str(e)}"
-
-def extract_html_content(file_path):
-    """Extract text content from HTML files"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        if HTML_SUPPORT:
-            soup = BeautifulSoup(html_content, 'html.parser')
-            # Remove script and style elements
-            for script in soup(["script", "style"]):
-                script.decompose()
-            text = soup.get_text()
-            # Clean up whitespace
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = ' '.join(chunk for chunk in chunks if chunk)
-            return text
-        else:
-            # Fallback: simple HTML tag removal
-            clean_text = re.sub('<[^<]+?>', '', html_content)
-            return re.sub(r'\s+', ' ', clean_text).strip()
-            
-    except Exception as e:
-        return f"Error reading HTML file: {str(e)}"
-
-def extract_pdf_content(file_path):
-    """Extract text content from PDF files"""
-    if not PDF_SUPPORT:
-        return "PDF processing not available. Install PyPDF2 to enable PDF support."
-    
-    try:
-        text_content = []
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            for page_num in range(len(pdf_reader.pages)):
-                page = pdf_reader.pages[page_num]
-                text_content.append(page.extract_text())
-        
-        full_text = '\n'.join(text_content)
-        return full_text.strip() if full_text.strip() else "No text could be extracted from PDF"
-        
-    except Exception as e:
-        return f"Error reading PDF file: {str(e)}"
-
-def extract_docx_content(file_path):
-    """Extract text content from DOCX files"""
-    if not DOCX_SUPPORT:
-        return "DOCX processing not available. Install python-docx to enable DOCX support."
-    
-    try:
-        doc = Document(file_path)
-        paragraphs = [paragraph.text for paragraph in doc.paragraphs]
-        full_text = '\n'.join(paragraphs)
-        return full_text.strip() if full_text.strip() else "No text found in DOCX file"
-        
-    except Exception as e:
-        return f"Error reading DOCX file: {str(e)}"
-
-def find_paper_files(project_path, pmcid):
-    """Find all files associated with a paper in the project directory"""
-    paper_files = []
-    
-    # Debug logging
-    print(f"DEBUG find_paper_files: project_path={project_path}, pmcid={pmcid}")
-    
-    # Look for PMC directory structure (from pygetpapers)
-    pmc_dir = os.path.join(project_path, pmcid)
-    print(f"DEBUG: Looking for PMC directory at: {pmc_dir}")
-    print(f"DEBUG: PMC directory exists: {os.path.exists(pmc_dir)}")
-    
-    if os.path.exists(pmc_dir):
-        print(f"DEBUG: Scanning files in {pmc_dir}")
-        for file_path in Path(pmc_dir).iterdir():
-            print(f"DEBUG: Found item: {file_path.name}, is_file: {file_path.is_file()}")
-            if file_path.is_file():
-                paper_files.append({
-                    'path': str(file_path),
-                    'filename': file_path.name,
-                    'size': file_path.stat().st_size
-                })
-    
-    # Also look for files directly in project directory (from uploads)
-    project_dir = Path(project_path)
-    if project_dir.exists():
-        for file_path in project_dir.iterdir():
-            if file_path.is_file() and pmcid.lower() in file_path.name.lower():
-                paper_files.append({
-                    'path': str(file_path),
-                    'filename': file_path.name,
-                    'size': file_path.stat().st_size
-                })
-    
-    print(f"DEBUG: Found {len(paper_files)} files: {[f['filename'] for f in paper_files]}")
-    return paper_files
-
-def run_docanalysis_pipeline(job):
-    """Run the docanalysis pipeline in background"""
-    try:
-        job.status = 'running'
-        job.progress = 10
-        
-        entity_extraction = EntityExtraction()
-
-        # Create unique project name if not provided
-        if not job.project_path:
-            project_name = f"analysis_{job.job_id}_{int(time.time())}"
-            project_path = os.path.join(os.getcwd(), project_name)
-            job.project_path = project_path
-        else:
-            project_path = job.project_path
-
-        # Set up parameters for entity_extraction
-        args = {
-            'project_name': project_path,
-            'query': job.params.get('query'),
-            'hits': job.params.get('hits'),
-            'terms_xml_path': job.params.get('dictionary'),
-            'search_section': job.params.get('search_sections'),
-            'entities': job.params.get('entities'),
-            'run_pygetpapers': job.job_type == 'download',
-            'make_section': True,  # Always make sections
-            'output': os.path.join(project_path, "results.csv"),
-            'make_ami_dict': False,
-            'spacy_model': None,
-            'html': os.path.join(project_path, "results.html") if job.params.get('output_format') == 'html' else None,
-            'synonyms': None,
-            'make_json': os.path.join(project_path, "results.json") if job.params.get('output_format') == 'json' else None,
-            'search_html': False,
-            'extract_abb': False,
-            'loglevel': 'info',
-            'logfile': os.path.join(project_path, "docanalysis.log")
-        }
-
-        if job.job_type == 'upload':
-            job.current_step = 'Processing uploaded files...'
-            os.makedirs(project_path, exist_ok=True)
-            for file_info in job.uploaded_files:
-                src_path = file_info['path']
-                if os.path.exists(src_path):
-                    # Create PMC-style directory for each file
-                    file_basename = Path(file_info['original_name']).stem
-                    pmc_dir = os.path.join(project_path, f"PMC_{secure_filename(file_basename)}")
-                    os.makedirs(pmc_dir, exist_ok=True)
-                    
-                    # Copy file with original extension
-                    file_ext = Path(file_info['original_name']).suffix
-                    dest_filename = f"fulltext{file_ext}"
-                    shutil.copy(src_path, os.path.join(pmc_dir, dest_filename))
-            args['run_pygetpapers'] = False
-
-        job.progress = 20
-        job.current_step = 'Extracting entities...'
-
-        entity_extraction.extract_entities_from_papers(
-            corpus_path=args['project_name'],
-            terms_xml_path=args['terms_xml_path'],
-            search_sections=args['search_section'],
-            entities=args['entities'],
-            query=args['query'],
-            hits=args['hits'],
-            run_pygetpapers=args['run_pygetpapers'],
-            make_section=args['make_section'],
-            csv_name=args['output'],
-            make_ami_dict=args['make_ami_dict'],
-            spacy_model=args['spacy_model'],
-            html_path=args['html'],
-            synonyms=args['synonyms'],
-            make_json=args['make_json'],
-            search_html=args['search_html'],
-            extract_abb=args['extract_abb']
+        await init_beanie(
+            database=db,
+            document_models=[
+                User,
+                DocumentAnalysis,
+                AnalysisJob,
+                ResearchProject,
+                Annotation,
+                SemanticChunk,
+                CustomDictionary
+            ]
         )
-
-        job.progress = 100
-        job.current_step = 'Analysis complete'
-        job.status = 'completed'
-        job.end_time = datetime.now()
-
-        analysis_results = parse_analysis_results(project_path, job.params)
-        
-        output_files = {}
-        for ext in ['csv', 'html', 'json']:
-            output_file = os.path.join(project_path, f"results.{ext}")
-            if os.path.exists(output_file):
-                output_files[f'results.{ext}'] = output_file
-
-        job.result = {
-            'files_processed': analysis_results.get('papersProcessed', 0),
-            'total_entities': analysis_results.get('entitiesFound', 0),
-            'processing_time': str(datetime.now() - job.start_time),
-            'output_files': output_files,
-            'data': analysis_results
-        }
-
+        logger.info("Database initialized successfully")
     except Exception as e:
-        job.status = 'failed'
-        job.error = str(e)
-        job.end_time = datetime.now()
+        logger.error(f"Database initialization failed: {e}")
+        raise
 
-def parse_analysis_results(project_path, params):
+@app.middleware("http")
+async def db_session_middleware(request: Request, call_next):
+    """Middleware to handle database sessions"""
+    request.state.start_time = datetime.utcnow()
+    response = await call_next(request)
+    duration = (datetime.utcnow() - request.state.start_time).total_seconds()
+    logger.info(f"{request.method} {request.url} - {response.status_code} - {duration:.2f}s")
+    return response
+
+# ==================== PROJECT MANAGEMENT ====================
+
+class CreateProjectRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    tags: Optional[List[str]] = []
+
+class ProjectOrQueryRequest(BaseModel):
+    project_id: Optional[str] = None
+    query: Optional[str] = None
+    project_name: Optional[str] = None
+
+async def get_or_create_project(project_id: Optional[str] = None, query: Optional[str] = None, project_name: Optional[str] = None) -> ResearchProject:
+    """
+    Get existing project or create a new one automatically.
+    Priority: project_id > project_name > query-based name
+    """
     try:
-        results_file = os.path.join(project_path, "results.csv")
-        entities_count = 0
-        if os.path.exists(results_file):
-            with open(results_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                entities_count = len(lines) - 1 if len(lines) > 1 else 0
+        # If project_id is provided, try to find existing project
+        if project_id:
+            project = await ResearchProject.find_one(ResearchProject.id == project_id)
+            if project:
+                logger.info(f"Found existing project: {project.name}")
+                return project
+            else:
+                logger.warning(f"Project ID {project_id} not found, creating new project")
         
-        papers_count = len([d for d in Path(project_path).iterdir() if d.is_dir() and d.name.startswith('PMC')])
+        # Determine project name
+        if project_name:
+            name = project_name
+        elif query:
+            # Create a project name from the query
+            clean_query = re.sub(r'[^\w\s-]', '', query)[:50].strip()
+            name = f"Research: {clean_query}"
+        else:
+            name = f"Project {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+        
+        # Check if a project with similar name exists recently
+        recent_project = await ResearchProject.find_one(
+            ResearchProject.name == name,
+            sort=[("created_at", -1)]
+        )
+        
+        if recent_project:
+            logger.info(f"Using recent project: {recent_project.name}")
+            return recent_project
+        
+        # Create new project
+        project = ResearchProject(
+            name=name,
+            description=query or f"Automatically created project for: {name}",
+            tags=["auto-created"] + (["search"] if query else []),
+            owner_id="anonymous",
+            created_by="auto-system"
+        )
+        await project.insert()
+        logger.info(f"Created new project: {project.name} (ID: {project.id})")
+        return project
+        
+    except Exception as e:
+        logger.error(f"Error in get_or_create_project: {e}")
+        raise
+
+@app.get("/health")
+@limiter.limit("10/minute")
+async def health_check(request: Request):
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.utcnow()}
+
+@app.post("/projects", response_model=ResearchProject)
+@limiter.limit("20/minute")
+async def create_project(
+    request: Request,
+    project_data: CreateProjectRequest
+):
+    """Create a new research project (explicit creation)"""
+    try:
+        project = await get_or_create_project(project_name=project_data.name)
+        # Update with provided data
+        if project_data.description:
+            project.description = project_data.description
+        if project_data.tags:
+            project.tags = list(set(project.tags + project_data.tags))
+        await project.save()
+        return project
+    except Exception as e:
+        logger.error(f"Project creation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects", response_model=List[ResearchProject])
+@limiter.limit("30/minute")
+async def get_projects(request: Request):
+    """Get all projects"""
+    try:
+        projects = await ResearchProject.find_all().sort(-ResearchProject.created_at).to_list()
+        return projects
+    except Exception as e:
+        logger.error(f"Get projects error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects/{project_id}", response_model=ResearchProject)
+@limiter.limit("30/minute")
+async def get_project(request: Request, project_id: str):
+    """Get specific project - automatically creates if doesn't exist"""
+    try:
+        project = await get_or_create_project(project_id=project_id)
+        return project
+    except Exception as e:
+        logger.error(f"Get project error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_id}")
+@limiter.limit("10/minute")
+async def delete_project(request: Request, project_id: str):
+    """Delete a project and all its documents"""
+    try:
+        # Find the project
+        project = await ResearchProject.get(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Delete all documents in the project
+        await DocumentAnalysis.find(DocumentAnalysis.project_id == project_id).delete()
+        
+        # Delete all analysis jobs for the project
+        await AnalysisJob.find(AnalysisJob.project_id == project_id).delete()
+        
+        # Delete the project itself
+        await project.delete()
+        
+        logger.info(f"Deleted project: {project.name} (ID: {project_id})")
+        return {"message": "Project deleted successfully", "project_id": project_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete project error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== PAPER FETCHING ====================
+
+class FetchPapersRequest(BaseModel):
+    query: str
+    hits: int = 10
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+
+@app.post("/projects/{project_id}/fetch-papers")
+@limiter.limit("5/minute")
+async def fetch_papers_with_id(
+    request: Request,
+    project_id: str,
+    fetch_data: FetchPapersRequest
+):
+    """Fetch research papers for a specific project ID"""
+    try:
+        project = await get_or_create_project(project_id=project_id)
+        
+        paper_fetcher = PaperFetcher()
+        result = await paper_fetcher.fetch_papers(
+            project_id=str(project.id),
+            query=fetch_data.query,
+            hits=fetch_data.hits
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"Fetch papers error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fetch-papers")
+@limiter.limit("5/minute")
+async def fetch_papers_auto(
+    request: Request,
+    fetch_data: FetchPapersRequest
+):
+    """Fetch research papers with automatic project creation"""
+    try:
+        project = await get_or_create_project(
+            project_id=fetch_data.project_id,
+            query=fetch_data.query,
+            project_name=fetch_data.project_name
+        )
+        
+        paper_fetcher = PaperFetcher()
+        result = await paper_fetcher.fetch_papers(
+            project_id=str(project.id),
+            query=fetch_data.query,
+            hits=fetch_data.hits
+        )
         
         return {
-            'papersProcessed': papers_count,
-            'entitiesFound': entities_count,
-            'resultsFile': results_file,
-            'projectPath': project_path
+            **result,
+            "project_id": str(project.id),
+            "project_name": project.name
         }
     except Exception as e:
-        return {'error': str(e)}
+        logger.error(f"Fetch papers error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'healthy', 'message': 'DocAnalysis API is running'})
+# ==================== DOCUMENT UPLOAD ====================
 
-@app.route('/api/dictionaries', methods=['GET'])
-def get_dictionaries():
-    dictionaries = []
-    dict_dir = Path('dictionary')
-    if dict_dir.exists():
-        for xml_file in dict_dir.glob('**/*.xml'):
-            dict_id = str(xml_file.relative_to(dict_dir).with_suffix(''))
-            dictionaries.append({
-                'id': dict_id,
-                'name': dict_id.replace('_', ' ').title()
-            })
-    return jsonify(dictionaries)
-
-@app.route('/api/sections', methods=['GET'])
-def get_sections():
-    sections = ['ALL', 'ACK', 'AFF', 'AUT', 'CON', 'DIS', 'ETH', 'FIG', 'INT', 'KEY', 'MET', 'RES', 'TAB', 'TIL']
-    return jsonify([{'id': s, 'name': s} for s in sections])
-
-@app.route('/api/entities', methods=['GET'])
-def get_entities():
-    entities = ['ALL', 'GPE', 'LANGUAGE', 'ORG', 'PERSON']
-    return jsonify([{'id': e, 'name': e} for e in entities])
-
-@app.route('/api/fetch-papers', methods=['POST'])
-def fetch_papers():
-    data = request.get_json()
-    query = data.get('query')
-    hits = data.get('hits', 10)
-
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
-
-    project_name = f"pygetpapers_{query.replace(' ', '_')}_{int(time.time())}"
-    
-    # Get the base directory where Flask app is running
-    base_dir = os.path.abspath(os.path.dirname(__file__))  # Directory containing the Flask script
-    project_path = os.path.join(base_dir, project_name)
-    
-    print(f"DEBUG fetch_papers: base_dir={base_dir}")
-    print(f"DEBUG fetch_papers: project_name={project_name}")
-    print(f"DEBUG fetch_papers: project_path={project_path}")
-
+@app.post("/projects/{project_id}/upload")
+@limiter.limit("10/minute")
+async def upload_document_to_project(
+    request: Request,
+    project_id: str,
+    file: UploadFile = File(...)
+):
+    """Upload a document to a specific project"""
     try:
-        entity_extraction = EntityExtraction()
-        entity_extraction.run_pygetpapers(query, hits, project_path)
+        project = await get_or_create_project(project_id=project_id)
         
-        papers = []
-        if os.path.exists(project_path):
-            for item in Path(project_path).iterdir():
-                if item.is_dir() and item.name.startswith('PMC'):
-                    # Get paper title from XML if available
-                    title = get_paper_title(item)
-                    papers.append({
-                        'title': title or item.name,
-                        'pmcid': item.name,
-                        'hasContent': len(list(item.iterdir())) > 0
-                    })
+        # Validate file type
+        allowed_extensions = {'.pdf', '.docx', '.txt', '.xml', '.html'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {allowed_extensions}")
+        
+        # Check file size (limit to 50MB)
+        if file.size and file.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size: 50MB")
+        
+        # Save file and create document record
+        document_service = DocumentService()
+        document = await document_service.create_from_upload(file, project.id)
+        
+        return {
+            "document_id": str(document.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "status": "uploaded"
+        }
+    except Exception as e:
+        logger.error(f"Upload document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload-document")
+@limiter.limit("10/minute")
+async def upload_document_auto(
+    request: Request,
+    file: UploadFile = File(...),
+    project_id: Optional[str] = None,
+    project_name: Optional[str] = None
+):
+    """Upload a document with automatic project creation"""
+    try:
+        project = await get_or_create_project(
+            project_id=project_id,
+            project_name=project_name or f"Upload: {file.filename}"
+        )
+        
+        # Validate file type
+        allowed_extensions = {'.pdf', '.docx', '.txt', '.xml', '.html'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {allowed_extensions}")
+        
+        # Check file size
+        if file.size and file.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size: 50MB")
+        
+        # Save file and create document record
+        document_service = DocumentService()
+        document = await document_service.create_from_upload(file, project.id)
+        
+        return {
+            "document_id": str(document.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "status": "uploaded"
+        }
+    except Exception as e:
+        logger.error(f"Upload document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/extract-text")
+@limiter.limit("20/minute")
+async def extract_text_from_file(
+    request: Request,
+    file: UploadFile = File(...)
+):
+    """Extract text from uploaded file without saving it"""
+    try:
+        # Validate file type
+        allowed_extensions = {'.pdf', '.docx', '.doc', '.txt', '.xml', '.html', '.csv', '.json'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {allowed_extensions}")
+        
+        # Check file size (limit to 10MB for text extraction)
+        if file.size and file.size > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size: 10MB")
+        
+        # Read file content
+        content = await file.read()
+        
+        # Extract text based on file type
+        extracted_text = ""
+        
+        if file_ext in {'.txt', '.csv', '.json', '.xml', '.html'}:
+            # Handle text files directly
+            try:
+                extracted_text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    extracted_text = content.decode('latin-1')
+                except:
+                    extracted_text = content.decode('utf-8', errors='ignore')
+        
+        elif file_ext == '.pdf':
+            # Handle PDF files
+            try:
+                import PyPDF2
+                import io
+                
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+                text_parts = []
+                
+                for page in pdf_reader.pages:
+                    text_parts.append(page.extract_text())
+                
+                extracted_text = "\n".join(text_parts)
+                
+                if not extracted_text.strip():
+                    extracted_text = "No text could be extracted from this PDF. It may contain only images or be password protected."
                     
-        return jsonify({
-            'project_name': project_name,
-            'papers': papers
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-def get_paper_title(paper_dir):
-    """Extract title from paper XML if available"""
-    try:
-        for file_path in paper_dir.iterdir():
-            if file_path.suffix.lower() == '.xml':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                # Simple title extraction - you might want to make this more sophisticated
-                title_match = re.search(r'<article-title[^>]*>(.*?)</article-title>', content, re.IGNORECASE | re.DOTALL)
-                if title_match:
-                    title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
-                    return title[:100] + ('...' if len(title) > 100 else '')
-        return None
-    except:
-        return None
-
-@app.route('/api/papers/<pmcid>', methods=['GET'])
-def get_paper_content(pmcid):
-    project_name = request.args.get('project_name')
-    if not project_name:
-        return jsonify({'error': 'project_name parameter is required'}), 400
-
-    # Get the base directory where Flask app is running (same as __file__ location)
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    project_path = os.path.join(base_dir, project_name)
-    
-    print(f"DEBUG get_paper_content: pmcid={pmcid}, project_name={project_name}")
-    print(f"DEBUG get_paper_content: base_dir={base_dir}")
-    print(f"DEBUG get_paper_content: project_path={project_path}")
-    print(f"DEBUG get_paper_content: project exists={os.path.exists(project_path)}")
-    
-    if not os.path.exists(project_path):
-        return jsonify({'error': f'Project not found at: {project_path}'}), 404
-
-    # Debug: List all directories in project to debug
-    if os.path.exists(project_path):
-        all_items = list(Path(project_path).iterdir())
-        print(f"DEBUG: Items in project directory: {[item.name for item in all_items]}")
-        all_dirs = [item.name for item in all_items if item.is_dir()]
-        print(f"DEBUG: Available directories: {all_dirs}")
-    
-    # Find files associated with this paper
-    paper_files = find_paper_files(project_path, pmcid)
-    
-    if not paper_files:
-        # Return debug information when files not found
-        debug_info = {
-            'project_path': project_path,
-            'pmcid_searched': pmcid,
-            'base_directory': base_dir,
-            'directories_found': []
+            except ImportError:
+                raise HTTPException(status_code=500, detail="PDF processing not available. PyPDF2 not installed.")
+            except Exception as e:
+                logger.error(f"PDF extraction error: {e}")
+                extracted_text = f"Error extracting text from PDF: {str(e)}"
+        
+        elif file_ext in {'.docx', '.doc'}:
+            # Handle Word documents
+            try:
+                if file_ext == '.docx':
+                    import docx
+                    import io
+                    
+                    doc = docx.Document(io.BytesIO(content))
+                    text_parts = []
+                    
+                    for paragraph in doc.paragraphs:
+                        text_parts.append(paragraph.text)
+                    
+                    extracted_text = "\n".join(text_parts)
+                else:
+                    # .doc files are more complex, provide fallback message
+                    extracted_text = "Legacy .doc files are not fully supported. Please save as .docx or copy/paste the text manually."
+                    
+            except ImportError:
+                raise HTTPException(status_code=500, detail="Word document processing not available. python-docx not installed.")
+            except Exception as e:
+                logger.error(f"Word document extraction error: {e}")
+                extracted_text = f"Error extracting text from Word document: {str(e)}"
+        
+        # Clean up the extracted text
+        if extracted_text:
+            # Remove excessive whitespace and normalize line breaks
+            extracted_text = re.sub(r'\n\s*\n', '\n\n', extracted_text)
+            extracted_text = re.sub(r'[ \t]+', ' ', extracted_text)
+            extracted_text = extracted_text.strip()
+        
+        if not extracted_text:
+            extracted_text = "No text could be extracted from this file."
+        
+        return {
+            "filename": file.filename,
+            "file_type": file_ext,
+            "file_size": file.size,
+            "text": extracted_text,
+            "character_count": len(extracted_text),
+            "word_count": len(extracted_text.split()) if extracted_text else 0
         }
         
-        if os.path.exists(project_path):
-            for item in Path(project_path).iterdir():
-                if item.is_dir():
-                    files_in_dir = [f.name for f in item.iterdir() if f.is_file()]
-                    debug_info['directories_found'].append({
-                        'name': item.name,
-                        'files': files_in_dir
-                    })
-        
-        return jsonify({
-            'error': 'Paper files not found',
-            'debug': debug_info
-        }), 404
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Text extraction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
 
-    # Try to find the best file to display (prefer XML, then others)
-    content_file = None
-    for file_info in paper_files:
-        if file_info['filename'].lower().endswith('.xml'):
-            content_file = file_info
-            break
-    
-    if not content_file:
-        # Use the first available file
-        content_file = paper_files[0]
+# ==================== ANALYSIS ENDPOINTS ====================
 
-    print(f"DEBUG: Selected file: {content_file}")
-
+@app.post("/projects/{project_id}/analyze")
+@limiter.limit("5/minute")
+async def analyze_project_documents(
+    request: Request,
+    project_id: str,
+    background_tasks: BackgroundTasks
+):
+    """Start analysis on documents in a specific project"""
     try:
-        content = extract_text_from_file(content_file['path'])
+        project = await get_or_create_project(project_id=project_id)
         
-        # Get paper title
-        title = get_paper_title(Path(content_file['path']).parent) if content_file['filename'].endswith('.xml') else pmcid
+        # Create analysis job
+        job = AnalysisJob(
+            project_id=str(project.id),
+            user_id="anonymous",
+            status="queued",
+            task_type="full_analysis"
+        )
+        await job.insert()
         
-        return jsonify({
-            'title': title or pmcid,
-            'content': content,
-            'filename': content_file['filename'],
-            'available_files': [{'filename': f['filename'], 'size': f['size']} for f in paper_files]
-        })
+        # Run analysis in background
+        analysis_service = AnalysisService()
+        background_tasks.add_task(analysis_service.run_analysis, str(job.id), str(project.id))
+        
+        return {
+            "job_id": str(job.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "status": "queued"
+        }
+    except Exception as e:
+        logger.error(f"Analyze document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze-papers")
+@limiter.limit("5/minute")
+async def analyze_papers_auto(
+    request: Request,
+    data: dict,
+    background_tasks: BackgroundTasks
+):
+    """Start analysis on papers with automatic project handling"""
+    try:
+        project_id = data.get("project_id")
+        query = data.get("query", "Research Papers")
+        
+        project = await get_or_create_project(
+            project_id=project_id,
+            query=query
+        )
+        
+        # Create analysis job
+        job = AnalysisJob(
+            project_id=str(project.id),
+            user_id="anonymous",
+            status="queued",
+            task_type="paper_analysis"
+        )
+        await job.insert()
+        
+        # Run analysis in background
+        analysis_service = AnalysisService()
+        background_tasks.add_task(analysis_service.run_analysis, str(job.id), str(project.id))
+        
+        return {
+            "job_id": str(job.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "status": "queued"
+        }
+    except Exception as e:
+        logger.error(f"Analyze papers error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== DOCUMENT QUERY ENDPOINTS ====================
+
+@app.get("/projects/{project_id}/documents")
+@limiter.limit("30/minute")
+async def get_project_documents(request: Request, project_id: str):
+    """Get all documents in a project"""
+    try:        
+        project = await get_or_create_project(project_id=project_id)
+        
+        
+        documents = await DocumentAnalysis.find({
+            "$or": [
+                {"project_id": project_id},
+                {"project_id": str(project_id)},
+                {"project_id": int(project_id) if project_id.isdigit() else project_id}
+            ]
+        }).to_list()
+        
+        return {
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "documents": documents
+        }
+    except Exception as e:
+        logger.error(f"Get documents error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects/{project_id}/results")
+@limiter.limit("20/minute")
+async def get_project_results(request: Request, project_id: str):
+    """Get analysis results for a project"""
+    try:
+        project = await get_or_create_project(project_id=project_id)
+        
+        documents = await DocumentAnalysis.find(
+            DocumentAnalysis.project_id == project_id
+        ).to_list()
+        
+        return {
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "document_count": len(documents),
+            "documents": documents
+        }
+    except Exception as e:
+        logger.error(f"Get analysis results error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== SEARCH ENDPOINTS ====================
+
+class SearchRequest(BaseModel):
+    query: str
+    project_id: Optional[str] = None
+    limit: int = 10
+
+@app.post("/search/keyword")
+@limiter.limit("15/minute")
+async def keyword_search(
+    request: Request,
+    search_data: SearchRequest
+):
+    """Search documents using keyword search with automatic project handling"""
+    try:
+        project = await get_or_create_project(
+            project_id=search_data.project_id,
+            query=search_data.query
+        )
+        
+        document_service = DocumentService()
+        results = await document_service.keyword_search(
+            str(project.id),
+            search_data.query,
+            search_data.limit
+        )
+        
+        return {
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Keyword search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/search/semantic")
+@limiter.limit("10/minute")
+async def semantic_search(
+    request: Request,
+    search_data: SearchRequest
+):
+    """Search documents using semantic search with automatic project handling"""
+    try:
+        project = await get_or_create_project(
+            project_id=search_data.project_id,
+            query=search_data.query
+        )
+        
+        document_service = DocumentService()
+        results = await document_service.semantic_search(
+            str(project.id),
+            search_data.query,
+            search_data.limit
+        )
+        
+        return {
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== JOB MANAGEMENT ====================
+
+@app.get("/jobs/{job_id}")
+@limiter.limit("20/minute")
+async def get_job_status(request: Request, job_id: str):
+    """Get status of an analysis job"""
+    try:
+        job = await AnalysisJob.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        project = await ResearchProject.get(job.project_id) if job.project_id else None
+        
+        return {
+            "job_id": str(job.id),
+            "status": job.status,
+            "progress": job.progress,
+            "result": job.result,
+            "error": job.error,
+            "project_id": str(job.project_id) if job.project_id else None,
+            "project_name": project.name if project else None
+        }
+    except Exception as e:
+        logger.error(f"Get job status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== ANNOTATION ENDPOINTS ====================
+
+class AnnotationCreate(BaseModel):
+    document_id: str
+    text: str
+    start_pos: int
+    end_pos: int
+    annotation_type: str
+    tags: List[str] = []
+
+@app.post("/annotations", response_model=Annotation)
+@limiter.limit("20/minute")
+async def create_annotation(
+    request: Request,
+    annotation_data: AnnotationCreate
+):
+    """Create a new annotation on a document"""
+    try:
+        document = await DocumentAnalysis.get(annotation_data.document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        annotation = Annotation(
+            document_id=annotation_data.document_id,
+            user_id="anonymous",
+            text=annotation_data.text,
+            start_pos=annotation_data.start_pos,
+            end_pos=annotation_data.end_pos,
+            annotation_type=annotation_data.annotation_type,
+            tags=annotation_data.tags
+        )
+        
+        await annotation.insert()
+        return annotation
+    except Exception as e:
+        logger.error(f"Create annotation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/documents/{document_id}/annotations")
+@limiter.limit("30/minute")
+async def get_document_annotations(request: Request, document_id: str):
+    """Get all annotations for a document"""
+    try:
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        annotations = await Annotation.find(
+            Annotation.document_id == document_id
+        ).to_list()
+        
+        return annotations
+    except Exception as e:
+        logger.error(f"Get document annotations error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/debug/test-xslt")
+async def test_xslt_transformation():
+    """Test if XSLT transformation works"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        # Test with a simple XML
+        test_xml = """<?xml version="1.0"?>
+        <article>
+            <front>
+                <article-meta>
+                    <title-group>
+                        <article-title>Test Article Title</article-title>
+                    </title-group>
+                    <abstract>
+                        <p>This is a test abstract.</p>
+                    </abstract>
+                </article-meta>
+            </front>
+            <body>
+                <sec>
+                    <title>Introduction</title>
+                    <p>This is a test paragraph.</p>
+                </sec>
+            </body>
+        </article>"""
+        
+        result = service._transform_jats_to_html(test_xml, "jats_to_html.xsl")
+        
+        return {
+            "success": "html" in result.lower(),
+            "result_preview": result[:500],
+            "result_length": len(result)
+        }
         
     except Exception as e:
-        print(f"DEBUG: Error reading file: {str(e)}")
-        return jsonify({'error': f'Error reading paper content: {str(e)}'}), 500
-
-@app.route('/api/analyze-papers', methods=['POST'])
-def analyze_papers_route():
-    data = request.get_json()
-    job_id = str(uuid.uuid4())
-    job = AnalysisJob(job_id, data, job_type='existing_project')
-    job.project_path = data.get('project_name')
-    analysis_jobs[job_id] = job
+        return {"error": str(e)}
     
-    thread = threading.Thread(target=run_docanalysis_pipeline, args=(job,))
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({'job_id': job_id, 'status': 'started'})
+@app.post("/projects/{project_id}/regenerate-html")
+async def regenerate_html_for_project(request: Request, project_id: str):
+    """Regenerate HTML content for all documents in a project"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        documents = await DocumentAnalysis.find({"project_id": project_id}).to_list()
+        updated_count = 0
+        
+        for doc in documents:
+            if doc.file_type == 'xml' and doc.file_path:
+                print(f"🔄 Regenerating HTML for: {doc.original_filename}")
+                
+                # Re-extract content using XSLT
+                try:
+                    with open(doc.file_path, 'r', encoding='utf-8') as file:
+                        xml_content = file.read()
+                        html_content = service._extract_xml_content(doc.file_path)
+                        
+                        # Update document with HTML content
+                        doc.html_content = html_content
+                        await doc.save()
+                        updated_count += 1
+                        print(f"✅ Updated HTML for: {doc.original_filename}")
+                        
+                except Exception as e:
+                    print(f"❌ Failed to regenerate HTML for {doc.original_filename}: {e}")
+        
+        return {
+            "project_id": project_id,
+            "documents_processed": len(documents),
+            "documents_updated": updated_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Regenerate HTML error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/api/analyze', methods=['POST'])
-def start_analysis_route():
-    data = request.get_json()
-    job_id = str(uuid.uuid4())
-    job = AnalysisJob(job_id, data, job_type=data.get('job_type', 'download'))
-    
-    if job.job_type == 'upload':
-        job.uploaded_files = data.get('uploaded_files', [])
-    elif job.job_type == 'existing_project':
-        job.project_path = data.get('project_path')
+@app.get("/documents/{document_id}/html")
+@limiter.limit("30/minute")
+async def get_document_html(request: Request, document_id: str):
+    """Get HTML content of a document"""
+    try:
+        from services.document_service import DocumentService
+        service = DocumentService()
+        
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # If no HTML content stored, generate it on the fly
+        html_content = document.html_content
+        if not html_content and document.file_type == 'xml' and document.file_path:
+            print(f"🔄 Generating HTML on-the-fly for: {document.original_filename}")
+            try:
+                with open(document.file_path, 'r', encoding='utf-8') as file:
+                    xml_content = file.read()
+                    html_content = service._extract_xml_content(document.file_path)
+                    
+                    # Optionally save it back to the database
+                    document.html_content = html_content
+                    await document.save()
+            except Exception as e:
+                print(f"❌ On-the-fly HTML generation failed: {e}")
+                html_content = document.content
+        
+        return {
+            "html": html_content or document.content,
+            "filename": document.original_filename,
+            "has_html": html_content is not None and html_content != document.content
+        }
+    except Exception as e:
+        logger.error(f"Get document HTML error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    analysis_jobs[job_id] = job
-    
-    thread = threading.Thread(target=run_docanalysis_pipeline, args=(job,))
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({'job_id': job_id, 'status': 'started'})
-
-@app.route('/api/status/<job_id>', methods=['GET'])
-def get_job_status(job_id):
-    job = analysis_jobs.get(job_id)
-    if not job:
-        return jsonify({'error': 'Job not found'}), 404
-    
-    return jsonify({
-        'job_id': job.job_id,
-        'status': job.status,
-        'progress': job.progress,
-        'current_step': job.current_step,
-        'result': job.result,
-        'error': job.error
-    })
-
-@app.route('/api/download/<job_id>/<filename>', methods=['GET'])
-def download_result(job_id, filename):
-    job = analysis_jobs.get(job_id)
-    if not job or job.status != 'completed' or not job.result:
-        return jsonify({'error': 'Job not completed or not found'}), 404
-
-    file_path = job.result['output_files'].get(filename)
-    if not file_path or not os.path.exists(file_path):
-        return jsonify({'error': 'File not found'}), 404
-
-    return send_file(file_path, as_attachment=True)
-
-@app.route('/api/upload', methods=['POST'])
-def upload_files():
-    if 'files' not in request.files:
-        return jsonify({'error': 'No files part'}), 400
-    files = request.files.getlist('files')
-    
-    uploaded_files_info = []
-    for file in files:
-        if file.filename == '':
-            continue
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{int(time.time())}_{filename}")
-            file.save(filepath)
-            uploaded_files_info.append({
-                'original_name': file.filename,
-                'path': filepath,
-                'size': os.path.getsize(filepath)
-            })
+@app.get("/proxy/image")
+async def proxy_image(request: Request, url: str = Query(...)):
+    """Proxy images to handle CORS and path issues"""
+    try:
+        import aiohttp
+        import base64
+        
+        async with aiohttp.ClientSession() as session:
+            # Construct proper PMC URL if needed
+            if url.startswith('pmc') or not url.startswith('http'):
+                if not url.startswith('/'):
+                    url = '/' + url
+                url = f"https://www.ncbi.nlm.nih.gov{url}"
             
-    return jsonify({'uploaded_files': uploaded_files_info})
+            async with session.get(url) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    media_type = response.headers.get('content-type', 'image/jpeg')
+                    
+                    return Response(
+                        content=content,
+                        media_type=media_type
+                    )
+                else:
+                    # Return placeholder image
+                    placeholder_svg = '''<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="100%" height="100%" fill="#f7f7f7"/>
+                        <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="14" fill="#999" text-anchor="middle" dy=".3em">Image not available</text>
+                    </svg>'''
+                    return Response(content=placeholder_svg.encode(), media_type="image/svg+xml")
+                    
+    except Exception as e:
+        logger.error(f"Image proxy error: {e}")
+        # Return error placeholder
+        error_svg = '''<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#fee"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="14" fill="#c33" text-anchor="middle" dy=".3em">Failed to load image</text>
+        </svg>'''
+        return Response(content=error_svg.encode(), media_type="image/svg+xml")
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+@app.get("/documents/{document_id}/text")
+@limiter.limit("30/minute")
+async def get_document_text(request: Request, document_id: str):
+    """Get text content of a document"""
+    try:
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            "text": document.content,
+            "filename": document.original_filename,
+            "metadata": document.metadata
+        }
+    except Exception as e:
+        logger.error(f"Get document text error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/documents/{document_id}")
+@limiter.limit("20/minute")
+async def delete_document(request: Request, document_id: str):
+    """Delete a document and its associated data"""
+    try:
+        # Find the document
+        document = await DocumentAnalysis.get(document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Delete associated annotations
+        await Annotation.find(Annotation.document_id == document_id).delete()
+        
+        # Delete associated semantic chunks
+        await SemanticChunk.find(SemanticChunk.document_id == document_id).delete()
+        
+        # Delete the document file if it exists
+        if document.file_path and os.path.exists(document.file_path):
+            try:
+                os.remove(document.file_path)
+                logger.info(f"Deleted file: {document.file_path}")
+            except Exception as file_error:
+                logger.warning(f"Could not delete file {document.file_path}: {file_error}")
+        
+        # Delete the document record
+        await document.delete()
+        
+        logger.info(f"Deleted document: {document.original_filename} (ID: {document_id})")
+        return {
+            "message": "Document deleted successfully",
+            "document_id": document_id,
+            "filename": document.original_filename
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== ADDITIONAL ENDPOINTS ====================
+
+@app.post("/extract-relations")
+@limiter.limit("10/minute")
+async def extract_relations(request: Request, data: dict):
+    """Extract relationships from text"""
+    try:
+        text = data.get("text", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="Text is required")
+        
+        from nlp.relationship_extractor import RelationshipExtractor
+        extractor = RelationshipExtractor()
+        relationships = await extractor.extract_relationships(text)
+        
+        # Format response to match frontend expectations
+        return {
+            "patterns": [],  # Could add pattern-based extraction here
+            "relations": relationships  # Already in correct format
+        }
+    except Exception as e:
+        logger.error(f"Extract relations error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze/thematic-clustering")
+@limiter.limit("5/minute")
+async def start_thematic_clustering(
+    request: Request,
+    data: dict,
+    background_tasks: BackgroundTasks
+):
+    """Start thematic clustering analysis"""
+    try:
+        project_id = data.get("project_id")
+        query = data.get("query", "Thematic Analysis")
+        
+        project = await get_or_create_project(
+            project_id=project_id,
+            query=query
+        )
+        
+        job = AnalysisJob(
+            project_id=str(project.id),
+            user_id="anonymous",
+            status="queued",
+            task_type="thematic_clustering"
+        )
+        await job.insert()
+        
+        analysis_service = AnalysisService()
+        background_tasks.add_task(analysis_service.run_analysis, str(job.id), str(project.id))
+        
+        return {
+            "job_id": str(job.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "status": "queued"
+        }
+    except Exception as e:
+        logger.error(f"Thematic clustering error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dictionaries")
+@limiter.limit("20/minute")
+async def get_dictionaries(request: Request):
+    """Get available dictionaries"""
+    try:
+        dicts = await CustomDictionary.find_all().to_list()
+        return {
+            "dictionaries": [
+                {"id": str(d.id), "name": d.name, "entries": len(d.terms), "description": d.description} 
+                for d in dicts
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Get dictionaries error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dictionaries/validate")
+@limiter.limit("20/minute")
+async def validate_dictionary(request: Request, data: dict):
+    """Validate dictionary data before creation"""
+    try:
+        name = data.get("name", "")
+        terms = data.get("terms", [])
+        
+        errors = []
+        warnings = []
+        
+        if not name:
+            errors.append("Dictionary name is required")
+        if len(terms) == 0:
+            errors.append("At least one term is required")
+        
+        unique_terms = set([t["term"].lower() for t in terms if isinstance(t, dict) and "term" in t])
+        duplicates = len(terms) - len(unique_terms)
+        
+        if duplicates > 0:
+            warnings.append(f"Found {duplicates} duplicate terms")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "stats": {
+                "total_terms": len(terms),
+                "unique_terms": len(unique_terms),
+                "duplicates": duplicates
+            }
+        }
+    except Exception as e:
+        logger.error(f"Validate dictionary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dictionaries/create")
+@limiter.limit("10/minute")
+async def create_dictionary(request: Request, data: dict):
+    """Create a new custom dictionary"""
+    try:
+        dictionary = CustomDictionary(
+            name=data["name"],
+            description=data.get("description"),
+            terms=data["terms"],
+            created_by="anonymous"
+        )
+        await dictionary.insert()
+        return {"message": "Dictionary created successfully", "id": str(dictionary.id)}
+    except Exception as e:
+        logger.error(f"Create dictionary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sections")
+@limiter.limit("20/minute")
+async def get_sections(request: Request):
+    """Get available sections"""
+    try:
+        sections = [
+            {"id": "1", "name": "Abstract", "description": "Abstract section"},
+            {"id": "2", "name": "Introduction", "description": "Introduction section"},
+            {"id": "3", "name": "Methods", "description": "Methods section"},
+            {"id": "4", "name": "Results", "description": "Results section"},
+            {"id": "5", "name": "Discussion", "description": "Discussion section"},
+            {"id": "6", "name": "Conclusion", "description": "Conclusion section"}
+        ]
+        return {"sections": sections}
+    except Exception as e:
+        logger.error(f"Get sections error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/entities")
+@limiter.limit("20/minute")
+async def get_entities(request: Request):
+    """Get all entities"""
+    try:
+        documents = await DocumentAnalysis.find_all().to_list()
+        
+        all_entities = []
+        for doc in documents:
+            for entity in doc.entities:
+                entity_with_context = {
+                    **entity,
+                    "document_id": str(doc.id),
+                    "document_name": doc.original_filename,
+                    "project_id": str(doc.project_id),
+                    "project_name": "Unknown Project"
+                }
+                all_entities.append(entity_with_context)
+        
+        return {"entities": all_entities}
+    except Exception as e:
+        logger.error(f"Get entities error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
